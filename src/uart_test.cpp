@@ -1,3 +1,5 @@
+#include "uart/PicoOsUart.h"
+
 void serial_task(void *param)
 {
     PicoOsUart u(0, 0, 1, 115200);
