@@ -1,6 +1,5 @@
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <iostream>
 #include <memory>
 #include "FreeRTOS.h"
@@ -8,15 +7,12 @@
 #include "gmp252.h"
 #include "pico/stdlib.h"
 #include "task.h"
-#include "timers.h"
 #include "hardware/timer.h"
 #include "uart/PicoOsUart.h"
 #include "modbus/ModbusClient.h"
-#include "modbus/ModbusRegister.h"
 #include "semphr.h"
 #include "produalMIO.h"
 #include "mutexGuard.h"
-#include "gmp252.h"
 #include "hmp60.h"
 #include "sdp610.h"
 
@@ -133,7 +129,6 @@ void initFunction() {
     }
 }
 
-// Watchdog task
 [[noreturn]] void watchDogTimer(void *pvParameter) {
     TickType_t lastOK = xTaskGetTickCount();
 
@@ -166,7 +161,6 @@ void initFunction() {
     }
 }
 
-// Fan control task
 [[noreturn]] void modbusFanTask(void *pvParameters) {
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(5000); // Run every 5 seconds
 
@@ -191,7 +185,6 @@ void initFunction() {
     }
 }
 
-// GMP252 CO2 sensor task
 [[noreturn]] void modbusGmpTask(void *pvParameters) {
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(2000); // Run every 2 seconds
 
@@ -215,7 +208,6 @@ void initFunction() {
     }
 }
 
-// HMP60 humidity/temperature task
 [[noreturn]] void modbusHmpTask(void *pvParameters) {
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000); // Run every 3 seconds
 
@@ -238,7 +230,6 @@ void initFunction() {
     }
 }
 
-// SDP610 pressure sensor task
 [[noreturn]] void I2cPressureSensorTask(void *pvParameters) {
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000); // Run every 4 seconds
 
@@ -259,7 +250,7 @@ void initFunction() {
     }
 }
 
-int main() {
+[[noreturn]] int main() {
     stdio_init_all();
     initFunction();
 
@@ -286,9 +277,7 @@ int main() {
     xTaskCreate(I2cPressureSensorTask, "PressureSensorTask", 256,
                 nullptr, TASK_HIGH_PRIORITY, nullptr);
 
-
     debug("All tasks created. Starting scheduler.\n");
-
 
     vTaskStartScheduler();
     while (true); // should never reach
