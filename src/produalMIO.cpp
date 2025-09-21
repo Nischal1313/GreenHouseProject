@@ -4,10 +4,10 @@
 #include "pico/time.h" // sleep_ms()
 
 ModbusMIO::ModbusMIO(std::shared_ptr<ModbusClient> modbus,
-                     uint8_t slaveAddress,
-                     SemaphoreHandle_t mutex)
+                     // uint8_t const slaveAddress,
+                     const SemaphoreHandle_t mutex)
     : modbus(std::move(modbus)),
-      slaveAddress(slaveAddress),
+      slaveAddress(1),
       busMutex(mutex) {}
 
 

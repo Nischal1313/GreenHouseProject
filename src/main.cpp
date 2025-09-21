@@ -4,6 +4,7 @@
 #include <memory>
 #include "FreeRTOS.h"
 #include "event_groups.h"
+#include "gmp252.h"
 #include "pico/stdlib.h"
 #include "task.h"
 #include "timers.h"
@@ -14,6 +15,7 @@
 #include "semphr.h"
 #include "produalMIO.h"
 #include "mutexGuard.h"
+#include "gmp252.h"
 
 extern "C" {
     uint32_t read_runtime_ctr(void) {
@@ -44,8 +46,11 @@ auto modbus = std::make_shared<ModbusClient>(uart);
 // Mutex handler
 SemaphoreHandle_t modbusMutex;
 
-// Correctly instantiate the ModbusMIO object.
-ModbusMIO modbusFan(modbus, 1,modbusMutex );
+//  the ModbusMIO object
+ModbusMIO modbusFan(modbus, modbusMutex );
+
+// gmp252 sensor, address exists on gmp252
+GMP252 gmpSensor(modbus, modbusMutex);
 
 // Queue handle for debug events
 QueueHandle_t syslog_q;
@@ -142,7 +147,7 @@ void debug(const char *message) {
 }
 
 // A new task to demonstrate Modbus functionality
-void modbusTask(void *pvParameters) {
+void modbusFanTask(void *pvParameters) {
     constexpr float desiredFanSpeed = 100.0f;
 
     // FIX: Set the correct slave address for the Modbus device
@@ -153,6 +158,15 @@ void modbusTask(void *pvParameters) {
     } else {
         debug("Failed to set fan speed\n");
     }
+    vTaskSuspend(nullptr); // Suspend this task after it runs
+}
+
+void modbusGMPTask(void *pvParameters) {
+    modbus->set_destination_rtu_address(240);
+    const float c02 = gmpSensor.readMeasuredCO2();
+    const float compensation = gmpSensor.readCompensationT();
+    const float measuredT = gmpSensor.readMeasuredT();
+    printf("Current values on the gmp252 %f %f %f", c02, compensation, measuredT);
     vTaskSuspend(nullptr); // Suspend this task after it runs
 }
 
@@ -174,7 +188,7 @@ int main() {
                 nullptr,
                 WATCHDOG_PRIORITY, nullptr);
 
-    xTaskCreate(modbusTask, "ModbusTask", 256,
+    xTaskCreate(modbusFanTask, "ModbusTask", 256,
                 nullptr,
                 TASK_HIGH_PRIORITY, nullptr);
 

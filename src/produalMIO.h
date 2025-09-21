@@ -6,8 +6,8 @@
 #include "mutexGuard.h"
 
 // Register addresses (adjust according to your device documentation)
-constexpr uint16_t REG_AO1 = 40001;        // AO1 value (Signed 16, 0–1000)
-constexpr uint16_t REG_FAN_STATUS = 10001; // AI1 Digital Input (bit, 0=off, 1=on)
+static constexpr uint16_t REG_AO1 = 40001;        // AO1 value (Signed 16, 0–1000)
+static constexpr uint16_t REG_FAN_STATUS = 10001; // AI1 Digital Input (bit, 0=off, 1=on)
 
 /**
  * @brief Class for controlling and monitoring a Produal MIO device over Modbus.
@@ -20,11 +20,9 @@ public:
     /**
      * @brief Constructs a ModbusMIO object.
      * @param modbus The shared pointer to the Modbus client.
-     * @param slaveAddress The slave address of the Modbus device.
      * @param mutex Handle to a FreeRTOS mutex protecting Modbus access.
      */
     ModbusMIO(std::shared_ptr<ModbusClient> modbus,
-              uint8_t slaveAddress,
               SemaphoreHandle_t mutex);
 
     /**
