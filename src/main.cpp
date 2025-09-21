@@ -113,6 +113,9 @@ void initFunction() {
     modbusMutex = xSemaphoreCreateMutex();
     i2cMutex = xSemaphoreCreateMutex();
     buttonMutex = xSemaphoreCreateMutex();
+    // Create event group and debug queue
+    eventGroup = xEventGroupCreate();
+    syslog_q = xQueueCreate(DEBUG_QUEUE_LENGTH, sizeof(debugEvent));
     // Initialize I2C sensor
     if (!pressureSensor.init()) {
         debug("Failed to initialize SDP610 pressure sensor\n");
@@ -260,10 +263,6 @@ int main() {
     stdio_init_all();
     initFunction();
 
-    // Create event group and debug queue
-    eventGroup = xEventGroupCreate();
-    syslog_q = xQueueCreate(DEBUG_QUEUE_LENGTH, sizeof(debugEvent));
-
     printf("Program started.\n");
 
     xTaskCreate(debugTask, "DebugTask", 256,
@@ -279,6 +278,9 @@ int main() {
                 TASK_HIGH_PRIORITY, nullptr);
     xTaskCreate(modbusGmpTask, "ModbusGmpTask", 256,
                 nullptr, TASK_HIGH_PRIORITY, nullptr);
+
+    debug("All tasks created. Starting scheduler...\n");
+
 
     vTaskStartScheduler();
     while (true); // should never reach
