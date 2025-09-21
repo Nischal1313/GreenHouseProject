@@ -165,9 +165,9 @@ void initFunction() {
         }
     }
 }
+
 // Fan control task
 [[noreturn]] void modbusFanTask(void *pvParameters) {
-
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(5000); // Run every 5 seconds
 
     while (true) {
@@ -239,7 +239,7 @@ void initFunction() {
 }
 
 // SDP610 pressure sensor task
-[[noreturn]] void pressureSensorTask(void *pvParameters) {
+[[noreturn]] void I2cPressureSensorTask(void *pvParameters) {
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000); // Run every 4 seconds
 
     while (true) {
@@ -276,10 +276,18 @@ int main() {
     xTaskCreate(modbusFanTask, "ModbusTask", 256,
                 nullptr,
                 TASK_HIGH_PRIORITY, nullptr);
+
     xTaskCreate(modbusGmpTask, "ModbusGmpTask", 256,
                 nullptr, TASK_HIGH_PRIORITY, nullptr);
 
-    debug("All tasks created. Starting scheduler...\n");
+    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 256,
+                nullptr, TASK_HIGH_PRIORITY, nullptr);
+
+    xTaskCreate(I2cPressureSensorTask, "PressureSensorTask", 256,
+                nullptr, TASK_HIGH_PRIORITY, nullptr);
+
+
+    debug("All tasks created. Starting scheduler.\n");
 
 
     vTaskStartScheduler();
