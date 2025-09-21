@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -16,11 +17,13 @@
 #include "produalMIO.h"
 #include "mutexGuard.h"
 #include "gmp252.h"
+#include "hmp60.h"
+#include "sdp610.h"
 
 extern "C" {
-    uint32_t read_runtime_ctr(void) {
-        return time_us_32();
-    }
+uint32_t read_runtime_ctr(void) {
+    return time_us_32();
+}
 }
 
 constexpr int TASK_HIGH_PRIORITY = 2 + tskIDLE_PRIORITY;
@@ -31,10 +34,18 @@ constexpr int BUTTON1_PIN = 7;
 constexpr int BUTTON2_PIN = 8;
 constexpr int BUTTON3_PIN = 9;
 
-// Event group bits
-constexpr EventBits_t BIT_TASK1 = (1 << 0);
-constexpr EventBits_t BIT_TASK2 = (1 << 1);
-constexpr EventBits_t BIT_TASK3 = (1 << 2);
+// Event group bits for watchdog
+constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
+constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
+constexpr EventBits_t BIT_TASK_HMP = (1 << 2);
+constexpr EventBits_t BIT_TASK_SDP = (1 << 3);
+constexpr EventBits_t ALL_TASK_BITS = BIT_TASK_FAN | BIT_TASK_GMP | BIT_TASK_HMP | BIT_TASK_SDP;
+
+
+// I2C instance for SDP610
+i2c_inst_t *i2c_instance = i2c1;
+constexpr uint SDA_PIN = 14;
+constexpr uint SCL_PIN = 15;
 
 
 // // Uart init
@@ -43,14 +54,16 @@ auto uart = std::make_shared<PicoOsUart>(0, 0, 1, 9600, 1, 256, 256);
 // Modbus client
 auto modbus = std::make_shared<ModbusClient>(uart);
 
-// Mutex handler
+// Mutex handlers
 SemaphoreHandle_t modbusMutex;
+SemaphoreHandle_t i2cMutex;
+SemaphoreHandle_t buttonMutex;
 
-//  the ModbusMIO object
-ModbusMIO modbusFan(modbus, modbusMutex );
-
-// gmp252 sensor, address exists on gmp252
-GMP252 gmpSensor(modbus, modbusMutex);
+// Sensor objects
+ModbusMIO modbusFan(modbus, modbusMutex); // Address 1
+GMP252 gmpSensor(modbus, modbusMutex); // Address 240
+HMP60 hmpSensor(modbus, modbusMutex); // Address 241
+SDP610 pressureSensor(i2c_instance, SDA_PIN, SCL_PIN, i2cMutex, 0x40);
 
 // Queue handle for debug events
 QueueHandle_t syslog_q;
@@ -61,9 +74,6 @@ EventGroupHandle_t eventGroup;
 
 // 30s watchdog timer
 constexpr TickType_t WATCHDOG_TIMER = pdMS_TO_TICKS(30000);
-
-// Create a mutex to protect button access
-SemaphoreHandle_t buttonMutex;
 
 // Debug event structure
 struct debugEvent {
@@ -77,8 +87,15 @@ struct TaskParams {
     EventBits_t eventBit;
 };
 
-void initFunction() {
+void debug(const char *message) {
+    debugEvent e{};
+    e.timestamp = xTaskGetTickCount();
+    snprintf(e.debug, sizeof(e.debug), "%s", message);
+    xQueueSend(syslog_q, &e, pdMS_TO_TICKS(10));
+}
 
+
+void initFunction() {
     // Setup buttons
     gpio_init(BUTTON1_PIN);
     gpio_set_dir(BUTTON1_PIN, GPIO_IN);
@@ -92,14 +109,16 @@ void initFunction() {
     gpio_set_dir(BUTTON3_PIN, GPIO_IN);
     gpio_pull_up(BUTTON3_PIN);
 
+    // Initialize mutexes
+    modbusMutex = xSemaphoreCreateMutex();
+    i2cMutex = xSemaphoreCreateMutex();
+    buttonMutex = xSemaphoreCreateMutex();
+    // Initialize I2C sensor
+    if (!pressureSensor.init()) {
+        debug("Failed to initialize SDP610 pressure sensor\n");
+    }
 }
 
-void debug(const char *message) {
-    debugEvent e{};
-    e.timestamp = xTaskGetTickCount();
-    snprintf(e.debug, sizeof(e.debug), "%s", message);
-    xQueueSend(syslog_q, &e, pdMS_TO_TICKS(10));
-}
 
 [[noreturn]] void debugTask(void *pvParameters) {
     debugEvent e{};
@@ -111,63 +130,130 @@ void debug(const char *message) {
     }
 }
 
-// Watchdog task (Task 4)
+// Watchdog task
 [[noreturn]] void watchDogTimer(void *pvParameter) {
-    constexpr EventBits_t ALL_BITS = BIT_TASK1 | BIT_TASK2 | BIT_TASK3;
     TickType_t lastOK = xTaskGetTickCount();
 
     while (true) {
-        // Wait up to 30s for all three tasks to report
         EventBits_t result = xEventGroupWaitBits(
             eventGroup,
-            ALL_BITS,
+            ALL_TASK_BITS,
             pdTRUE, // clear bits on exit
             pdTRUE, // wait for all bits
             WATCHDOG_TIMER
         );
 
-        if ((result & ALL_BITS) == ALL_BITS) {
+        if ((result & ALL_TASK_BITS) == ALL_TASK_BITS) {
             TickType_t now = xTaskGetTickCount();
             char buf[64];
-            snprintf(buf, sizeof(buf),
-                     "Watchdog: OK, %lu ticks since last OK\n",
-                     static_cast<unsigned long>(now - lastOK));
+            snprintf(buf, sizeof(buf), "Watchdog: OK, %lu ms since last OK\n",
+                     static_cast<unsigned long>((now - lastOK) * portTICK_PERIOD_MS));
             debug(buf);
             lastOK = now;
         } else {
-            // Timeout -> check missing tasks
-            EventBits_t missingBits = ALL_BITS & ~result;
+            EventBits_t missingBits = ALL_TASK_BITS & ~result;
             debug("Watchdog FAIL! Missing tasks:\n");
-            if (missingBits & BIT_TASK1) debug("Task One\n");
-            if (missingBits & BIT_TASK2) debug("Task Two\n");
-            if (missingBits & BIT_TASK3) debug("Task Three\n");
-            vTaskSuspend(nullptr); // suspend watchdog
+            if (missingBits & BIT_TASK_FAN) debug("  Fan control task\n");
+            if (missingBits & BIT_TASK_GMP) debug("  GMP252 CO2 sensor task\n");
+            if (missingBits & BIT_TASK_HMP) debug("  HMP60 humidity/temp task\n");
+            if (missingBits & BIT_TASK_SDP) debug("  SDP610 pressure sensor task\n");
+
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 }
+// Fan control task
+[[noreturn]] void modbusFanTask(void *pvParameters) {
 
-// A new task to demonstrate Modbus functionality
-void modbusFanTask(void *pvParameters) {
-    constexpr float desiredFanSpeed = 100.0f;
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(5000); // Run every 5 seconds
 
-    // FIX: Set the correct slave address for the Modbus device
-    modbus->set_destination_rtu_address(1);
+    while (true) {
+        constexpr float desiredFanSpeed = 100.0f;
+        bool success = modbusFan.setFanSpeed(desiredFanSpeed);
+        bool fanRunning = modbusFan.isFanRunning();
 
-    if (modbusFan.setFanSpeed(desiredFanSpeed)) {
-        debug("Fan speed set successfully\n");
-    } else {
-        debug("Failed to set fan speed\n");
+        if (success && fanRunning) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Fan speed set to %.1f%%, fan is running\n", desiredFanSpeed);
+            debug(buf);
+        } else {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Fan control failed! Success: %d, Running: %d\n", success, fanRunning);
+            debug(buf);
+        }
+
+        // Notify watchdog
+        xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
+        vTaskDelay(taskDelay);
     }
-    vTaskSuspend(nullptr); // Suspend this task after it runs
 }
 
-void modbusGMPTask(void *pvParameters) {
-    modbus->set_destination_rtu_address(240);
-    const float c02 = gmpSensor.readMeasuredCO2();
-    const float compensation = gmpSensor.readCompensationT();
-    const float measuredT = gmpSensor.readMeasuredT();
-    printf("Current values on the gmp252 %f %f %f", c02, compensation, measuredT);
-    vTaskSuspend(nullptr); // Suspend this task after it runs
+// GMP252 CO2 sensor task
+[[noreturn]] void modbusGmpTask(void *pvParameters) {
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(2000); // Run every 2 seconds
+
+    while (true) {
+        const float co2 = gmpSensor.readMeasuredCO2();
+        const float compensation = gmpSensor.readCompensationT();
+        const float measuredT = gmpSensor.readMeasuredT();
+
+        if (!std::isnan(co2) && !std::isnan(compensation) && !std::isnan(measuredT)) {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "GMP252 - CO2: %.1f ppm, Comp T: %.1f°C, Meas T: %.1f°C\n",
+                     co2, compensation, measuredT);
+            debug(buf);
+        } else {
+            debug("GMP252 sensor read failed!\n");
+        }
+
+        // Notify watchdog
+        xEventGroupSetBits(eventGroup, BIT_TASK_GMP);
+        vTaskDelay(taskDelay);
+    }
+}
+
+// HMP60 humidity/temperature task
+[[noreturn]] void modbusHmpTask(void *pvParameters) {
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000); // Run every 3 seconds
+
+    while (true) {
+        const float humidity = hmpSensor.readHumidity();
+        const float temperature = hmpSensor.readTemperature();
+
+        if (!std::isnan(humidity) && !std::isnan(temperature)) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "HMP60 - Humidity: %.1f%%, Temperature: %.1f°C\n",
+                     humidity, temperature);
+            debug(buf);
+        } else {
+            debug("HMP60 sensor read failed!\n");
+        }
+
+        // Notify watchdog
+        xEventGroupSetBits(eventGroup, BIT_TASK_HMP);
+        vTaskDelay(taskDelay);
+    }
+}
+
+// SDP610 pressure sensor task
+[[noreturn]] void pressureSensorTask(void *pvParameters) {
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000); // Run every 4 seconds
+
+    while (true) {
+        const float pressure = pressureSensor.readPressurePa();
+
+        if (!std::isnan(pressure)) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "SDP610 - Pressure: %.2f Pa\n", pressure);
+            debug(buf);
+        } else {
+            debug("SDP610 pressure sensor read failed!\n");
+        }
+
+        // Notify watchdog
+        xEventGroupSetBits(eventGroup, BIT_TASK_SDP);
+        vTaskDelay(taskDelay);
+    }
 }
 
 int main() {
@@ -177,7 +263,7 @@ int main() {
     // Create event group and debug queue
     eventGroup = xEventGroupCreate();
     syslog_q = xQueueCreate(DEBUG_QUEUE_LENGTH, sizeof(debugEvent));
-    buttonMutex = xSemaphoreCreateMutex();
+
     printf("Program started.\n");
 
     xTaskCreate(debugTask, "DebugTask", 256,
@@ -191,8 +277,9 @@ int main() {
     xTaskCreate(modbusFanTask, "ModbusTask", 256,
                 nullptr,
                 TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 256,
+                nullptr, TASK_HIGH_PRIORITY, nullptr);
 
     vTaskStartScheduler();
     while (true); // should never reach
 }
-
