@@ -1,45 +1,48 @@
 #include <algorithm>
 #include <cstdio>
 #include "produalMIO.h"
-#include "pico/time.h" // sleep_ms()
+#include "pico/time.h"
 
 ModbusMIO::ModbusMIO(std::shared_ptr<ModbusClient> modbus,
-                     // uint8_t const slaveAddress,
                      const SemaphoreHandle_t mutex)
     : modbus(std::move(modbus)),
-      slaveAddress(1),
+      slaveAddress(1),   // Produal MIO Modbus address
       busMutex(mutex) {}
 
-
 /**
- * @brief Checks if the ventilation fan is running by reading the digital input.
+ * @brief Checks if the ventilation fan is running by reading the pulse counter.
+ *        The counter is self-clearing after each read.
  */
 bool ModbusMIO::isFanRunning() const {
-    MutexGuard lock(busMutex); // Acquire mutex safely
+    MutexGuard lock(busMutex);
     if (!lock.owns_lock()) {
-        printf("Failed to acquire Modbus mutex in ModbusMIO-> isFanRunning()\n");
+        printf("Failed to acquire Modbus mutex in isFanRunning()\n");
         return false;
     }
 
-    nmbs_bitfield status;
-    if (modbus->read_discrete_inputs(REG_FAN_STATUS, 1, status) == NMBS_ERROR_NONE) {
-        return (status[0] & 0x01) != 0;
+    uint16_t counter = 0;
+    modbus->set_destination_rtu_address(slaveAddress);
+    nmbs_error err = modbus->read_input_registers(REG_FAN_PULSE_COUNT, 1, &counter);
+
+    if (err == NMBS_ERROR_NONE) {
+        return counter > 0;
+    } else {
+        printf("Failed to read fan pulse counter, error %d\n", err);
+        return false;
     }
-    return false;
 }
 
-
 /**
- * @brief Sets the fan speed and validates operation by checking fan status.
+ * @brief Sets the fan speed (0–100%) and returns true if write succeeded.
  */
 bool ModbusMIO::setFanSpeed(float percent) const {
-    MutexGuard lock(busMutex); // Acquire mutex safely
+    MutexGuard lock(busMutex);
     if (!lock.owns_lock()) {
         printf("Failed to acquire Modbus mutex in setFanSpeed()\n");
         return false;
     }
 
-    // Clamp percent to valid range and map to 0–1000 register scale
+    // Clamp to 0–100% and scale to 0–1000 (0–10 V)
     percent = std::clamp(percent, 0.0f, 100.0f);
     const auto value = static_cast<uint16_t>((percent / 100.0f) * 1000.0f);
 
@@ -47,28 +50,10 @@ bool ModbusMIO::setFanSpeed(float percent) const {
     nmbs_error err = modbus->write_single_register(REG_AO1, value);
 
     if (err == NMBS_ERROR_NONE) {
-        printf("Modbus write successful. Waiting to check fan status...\n");
-        vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to yield CPU
-        return isFanRunning();
+        printf("Fan speed set to %.1f%% (value=%u)\n", percent, value);
+        return true;
     } else {
-        printf("ERROR: %d. ", err);
-        switch (err) {
-            case NMBS_ERROR_CRC:
-                printf("CRC error. Check wiring and device.\n");
-                break;
-            case NMBS_ERROR_TIMEOUT:
-                printf("Request timeout. Device may not be connected or is offline.\n");
-                break;
-            case NMBS_ERROR_INVALID_RESPONSE:
-                printf("Invalid response from device. Check slave address and function code.\n");
-                break;
-            case NMBS_ERROR_TRANSPORT:
-                printf("Transport layer error.\n");
-                break;
-            default:
-                printf("Unknown.\n");
-                break;
-        }
+        printf("Failed to set fan speed, error %d\n", err);
         return false;
     }
 }
