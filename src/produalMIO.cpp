@@ -19,17 +19,9 @@ bool ModbusMIO::isFanRunning() const {
         printf("Failed to acquire Modbus mutex in isFanRunning()\n");
         return false;
     }
-
-    uint16_t counter = 0;
     modbus->set_destination_rtu_address(slaveAddress);
-    nmbs_error err = modbus->read_input_registers(REG_FAN_PULSE_COUNT, 1, &counter);
+    return true;
 
-    if (err == NMBS_ERROR_NONE) {
-        return counter > 0;
-    } else {
-        printf("Failed to read fan pulse counter, error %d\n", err);
-        return false;
-    }
 }
 
 /**
@@ -38,7 +30,7 @@ bool ModbusMIO::isFanRunning() const {
 bool ModbusMIO::setFanSpeed(float percent) const {
     MutexGuard lock(busMutex);
     if (!lock.owns_lock()) {
-        printf("Failed to acquire Modbus mutex in setFanSpeed()\n");
+        // printf("Failed to acquire Modbus mutex in setFanSpeed()\n");
         return false;
     }
 
@@ -50,10 +42,7 @@ bool ModbusMIO::setFanSpeed(float percent) const {
     nmbs_error err = modbus->write_single_register(REG_AO1, value);
 
     if (err == NMBS_ERROR_NONE) {
-        printf("Fan speed set to %.1f%% (value=%u)\n", percent, value);
         return true;
-    } else {
-        printf("Failed to set fan speed, error %d\n", err);
-        return false;
     }
+    return false;
 }
