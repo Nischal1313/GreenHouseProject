@@ -1,100 +1,77 @@
+#include "mutexGuard.h"
 #include "sdp610.h"
 #include <cstdio>
-#include <cmath> // for NAN, powf
+#include <cmath>
 #include "pico/stdlib.h"
 
-// SDP610 measurement command (see datasheet)
-static constexpr uint8_t SDP610_MEASURE_CMD = 0xF1;
+static constexpr uint8_t CMD_TRIGGER_MEAS = 0xF1;
+static constexpr uint8_t CMD_SOFT_RESET   = 0xFE;
+static constexpr float SCALE_FACTOR       = 240.0f; // counts per Pa
 
-// Scale factors for different measurement modes (from datasheet chapter 2)
-// Assuming standard mode for SDP610-125Pa
-static constexpr float SCALE_FACTOR = 60.0f; // Pa/count for 125Pa range
-
-SDP610::SDP610(i2c_inst_t *i2c_instance, uint sda_pin, uint scl_pin,
+SDP610::SDP610(i2c_inst_t *i2c_instance, uint sda_pin_, uint scl_pin_,
                SemaphoreHandle_t mutex, uint8_t i2c_address)
     : i2c(i2c_instance),
-      sda_pin(sda_pin),
-      scl_pin(scl_pin),
+      sda_pin(sda_pin_),
+      scl_pin(scl_pin_),
       busMutex(mutex),
       address(i2c_address),
-      initialized(false) {}
+      initialized(false) { }
 
 bool SDP610::init() {
-    MutexGuard lock(busMutex);
-    if (!lock.owns_lock()) return false;
-
-    // Initialize I²C hardware
     gpio_set_function(sda_pin, GPIO_FUNC_I2C);
     gpio_set_function(scl_pin, GPIO_FUNC_I2C);
     gpio_pull_up(sda_pin);
     gpio_pull_up(scl_pin);
 
-    // Initialize I²C at 100kHz (standard speed)
-    i2c_init(i2c, 100 * 1000);
+    sleep_ms(10);
 
-    // Simple check if device responds
-    uint8_t dummy;
-    int result = i2c_read_blocking(i2c, address, &dummy, 1, false);
+    // Send soft reset (0xFE)
+    uint8_t cmd = CMD_SOFT_RESET;
+    int written = i2c_write_blocking(i2c, address, &cmd, 1, false);
+    if (written != 1) {
+        printf("SDP610: Soft reset failed\n");
+        // Not fatal — some modules don’t need it
+    } else {
+        printf("SDP610: Soft reset OK\n");
+    }
 
-    initialized = (result >= 0);
-    return initialized;
-}
+    sleep_ms(50); // sensor warm-up
 
-bool SDP610::startMeasurement() const {
-    uint8_t cmd = SDP610_MEASURE_CMD;
-    int result = i2c_write_blocking(i2c, address, &cmd, 1, false);
-    return (result == 1);
-}
-
-bool SDP610::readData(uint8_t *data, size_t length) const {
-    int result = i2c_read_blocking(i2c, address, data, length, false);
-    return (result == static_cast<int>(length));
+    initialized = true;
+    return true;
 }
 
 int16_t SDP610::readRawPressure() const {
-    if (!initialized) return 0;
+    if (!initialized) return INT16_MIN;
 
-    MutexGuard lock(busMutex);
-    if (!lock.owns_lock()) return 0;
-
-    // Start measurement
-    if (!startMeasurement()) {
-        return 0;
+    uint8_t cmd = CMD_TRIGGER_MEAS;
+    if (i2c_write_blocking(i2c, address, &cmd, 1, false) != 1) {
+        printf("SDP610: Failed to send trigger command\n");
+        return INT16_MIN;
     }
 
-    // Wait for measurement to complete (datasheet specifies max 10ms)
-    sleep_ms(10);
+    sleep_ms(5); // give sensor time
 
-    // Read 3 bytes: 2 data bytes + 1 CRC byte (we'll ignore CRC for simplicity)
-    uint8_t data[3];
-    if (!readData(data, 3)) {
-        return 0;
+    uint8_t buf[2];
+    int read = i2c_read_blocking(i2c, address, buf, 2, false);
+    if (read != 2) {
+        printf("SDP610: Failed to read measurement\n");
+        return INT16_MIN;
     }
 
-    // Convert to 16-bit signed integer (big-endian)
-    int16_t raw_value = (data[0] << 8) | data[1];
-    return raw_value;
-}
-
-float SDP610::altitudeCorrection(float altitude_m) {
-    // Simple altitude correction based on barometric formula
-    // For more accurate correction, refer to datasheet chapter 5
-    if (altitude_m == 0.0f) return 1.0f;
-
-    // Approximate pressure correction factor
-    // P = P0 * (1 - 0.0065 * h/288.15)^5.255
-    return powf(1.0f - (0.0065f * altitude_m / 288.15f), 5.255f);
-}
-
-float SDP610::convertToPascals(int16_t raw_value, float altitude_m) {
-    // Apply scale factor and altitude correction
-    float correction = altitudeCorrection(altitude_m);
-    return (raw_value / SCALE_FACTOR) * correction;
+    int16_t raw = (int16_t)((buf[0] << 8) | buf[1]);
+    return raw;
 }
 
 float SDP610::readPressurePa(float altitude_m) const {
-    int16_t raw_value = readRawPressure();
-    if (raw_value == 0) return NAN;
+    int16_t raw = readRawPressure();
+    if (raw == INT16_MIN) return NAN;
 
-    return convertToPascals(raw_value, altitude_m);
+    float pressure = static_cast<float>(raw) / SCALE_FACTOR;
+    return pressure * altitudeCorrection(altitude_m);
+}
+
+float SDP610::altitudeCorrection(float altitude_m) {
+    if (altitude_m == 0.0f) return 1.0f;
+    return powf(1.0f - (0.0065f * altitude_m / 288.15f), 5.255f);
 }
