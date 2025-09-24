@@ -1,7 +1,5 @@
-// ===== gmp252.h file =====
 #ifndef GMP252_H
 #define GMP252_H
-
 #include <memory>
 #include "ModbusClient.h"
 #include "mutexGuard.h"
@@ -30,8 +28,6 @@ public:
 private:
     std::shared_ptr<ModbusClient> modbus;
     uint8_t slaveAddress;
-    bool initialized;  // Track if properly initialized
-
     /**
      * @brief Prepares for a Modbus operation by acquiring the lock and setting the slave address.
      * @return A MutexGuard object if successful, or an empty guard if failed.

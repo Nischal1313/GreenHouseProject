@@ -19,48 +19,29 @@
 #include "debug.h"
 #include "queue.h"
 
-//---------------------------------------------------
-// Runtime counter required by some drivers
-//---------------------------------------------------
 extern "C" {
 uint32_t read_runtime_ctr(void) {
     return time_us_32();
-}
-}
+}}
 
-//---------------------------------------------------
-// Task priorities
-//---------------------------------------------------
 constexpr int TASK_HIGH_PRIORITY = 2 + tskIDLE_PRIORITY;
 constexpr int WATCHDOG_PRIORITY = 2 + tskIDLE_PRIORITY;
 constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
 
-//---------------------------------------------------
-// Buttons
-//---------------------------------------------------
 constexpr int BUTTON1_PIN = 7;
 constexpr int BUTTON2_PIN = 8;
 constexpr int BUTTON3_PIN = 9;
 
-//---------------------------------------------------
-// Event group bits
-//---------------------------------------------------
 constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
 constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
 constexpr EventBits_t BIT_TASK_HMP = (1 << 2);
 constexpr EventBits_t BIT_TASK_SDP = (1 << 3);
 constexpr EventBits_t ALL_TASK_BITS = BIT_TASK_FAN | BIT_TASK_GMP | BIT_TASK_HMP | BIT_TASK_SDP;
 
-//---------------------------------------------------
-// I2C instance
-//---------------------------------------------------
 i2c_inst_t *i2c_instance = i2c1;
 constexpr uint SDA_PIN = 14;
 constexpr uint SCL_PIN = 15;
 
-//---------------------------------------------------
-// Global handles
-//---------------------------------------------------
 SemaphoreHandle_t modbusMutex;
 SemaphoreHandle_t i2cMutex;
 SemaphoreHandle_t buttonMutex;
@@ -68,20 +49,15 @@ SemaphoreHandle_t buttonMutex;
 std::shared_ptr<PicoOsUart> uart;
 std::shared_ptr<ModbusClient> modbus;
 
-QueueHandle_t syslog_q;
-constexpr int DEBUG_QUEUE_LENGTH = 10;
+
 
 EventGroupHandle_t eventGroup;
 
 constexpr TickType_t WATCHDOG_TIMER = pdMS_TO_TICKS(30000);
 
 
-//---------------------------------------------------
-// Initialization
-//---------------------------------------------------
 void initFunction() {
     stdio_init_all();
-    createQueue();
     // Buttons
     gpio_init(BUTTON1_PIN);
     gpio_set_dir(BUTTON1_PIN, GPIO_IN);
@@ -92,14 +68,12 @@ void initFunction() {
     gpio_init(BUTTON3_PIN);
     gpio_set_dir(BUTTON3_PIN, GPIO_IN);
     gpio_pull_up(BUTTON3_PIN);
-
     // Create mutexes
     modbusMutex = xSemaphoreCreateMutex();
     i2cMutex = xSemaphoreCreateMutex();
     buttonMutex = xSemaphoreCreateMutex();
     // Event group and debug queue
     eventGroup = xEventGroupCreate();
-    // syslog_q = xQueueCreate(DEBUG_QUEUE_LENGTH, sizeof(64));
     // UART hardware init
     uart_init(uart1, 9600);
     gpio_set_function(4, GPIO_FUNC_UART);
@@ -112,20 +86,12 @@ void initFunction() {
     modbus = std::make_shared<ModbusClient>(uart);
     // Initialize I2C1 for SDP610
     i2c_init(i2c_instance, 100 * 1000); // 100 kHz
-    // Create SDP610 object directly
-    // pressureSensor = SDP610(i2c_instance, SDA_PIN, SCL_PIN, i2cMutex, 0x40);
-
-    // Initialize sensor once
-    // if (!pressureSensor.init()) {
-    //     debug("Failed to initialize SDP610 pressure sensor\n");
-    // }
 }
 
-//---------------------------------------------------
-// Tasks
-//---------------------------------------------------
 
-[[noreturn]] void watchDogTimer(void *pvParameter) {
+// Tasks
+[[noreturn]] void watchDogTimer(void *pvParameters) {
+    const auto debug = static_cast<Debug *>(pvParameters);
     TickType_t lastOK = xTaskGetTickCount();
     while (true) {
         EventBits_t result = xEventGroupWaitBits(eventGroup, ALL_TASK_BITS, pdTRUE, pdTRUE, WATCHDOG_TIMER);
@@ -134,15 +100,15 @@ void initFunction() {
             char buf[128];
             snprintf(buf, sizeof(buf), "Watchdog: OK, %lu ms since last OK\n",
                      static_cast<unsigned long>((now - lastOK) * portTICK_PERIOD_MS));
-            debug(buf);
+            debug->print(buf);
             lastOK = now;
         } else {
             EventBits_t missingBits = ALL_TASK_BITS & ~result;
-            debug("Watchdog FAIL! Missing tasks: -> ");
-            if (missingBits & BIT_TASK_FAN) debug("  Fan control task\n");
-            if (missingBits & BIT_TASK_GMP) debug("  GMP252 CO2 sensor task\n");
-            if (missingBits & BIT_TASK_HMP) debug("  HMP60 humidity/temp task\n");
-            if (missingBits & BIT_TASK_SDP) debug("  SDP610 pressure sensor task\n");
+            debug->print("Watchdog FAIL! Missing tasks: -> ");
+            if (missingBits & BIT_TASK_FAN) debug->print("  Fan control task\n");
+            if (missingBits & BIT_TASK_GMP) debug->print("  GMP252 CO2 sensor task\n");
+            if (missingBits & BIT_TASK_HMP) debug->print("  HMP60 humidity/temp task\n");
+            if (missingBits & BIT_TASK_SDP) debug->print("  SDP610 pressure sensor task\n");
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
@@ -150,6 +116,7 @@ void initFunction() {
 
 [[noreturn]] void modbusFanTask(void *pvParameters) {
     const ModbusMIO modbusFan(modbus, modbusMutex);
+    const auto debug = static_cast<Debug *>(pvParameters);
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(50000);
     while (true) {
         constexpr float desiredFanSpeed = 0.0f;
@@ -159,14 +126,14 @@ void initFunction() {
         char buf[128];
         if (success) {
             snprintf(buf, sizeof(buf), "Fan speed set to %.1f%%, fan is running\n", desiredFanSpeed);
-            debug(buf);
+            debug->print(buf);
         }
         if (fanRunning) {
             snprintf(buf, sizeof(buf), "Fan is running.\n");
-            debug(buf);
+            debug->print(buf);
         } else {
             snprintf(buf, sizeof(buf), "Failed to set speed.\n");
-            debug(buf);
+            debug->print(buf);
         }
 
         xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
@@ -175,6 +142,7 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusGmpTask(void *pvParameters) {
+    const auto debug = static_cast<Debug *>(pvParameters);
     const GMP252 gmpSensor(modbus, modbusMutex);
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(2000);
     while (true) {
@@ -183,8 +151,8 @@ void initFunction() {
             char buf[128];
             snprintf(buf, sizeof(buf),
                      "GMP252 - CO2: %.1f ppm\n", co2);
-            debug(buf);
-        } else debug("GMP252 sensor read failed!\n");
+            debug->print(buf);
+        } else debug->print("GMP252 sensor read failed!\n");
 
         xEventGroupSetBits(eventGroup, BIT_TASK_GMP);
         vTaskDelay(taskDelay);
@@ -192,7 +160,7 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusHmpTask(void *pvParameters) {
-    auto debug = static_cast<Debug *>(pvParameters);
+    const auto debug = static_cast<Debug *>(pvParameters);
     const HMP60 hmpSensor(modbus, modbusMutex);
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000);
     while (true) {
@@ -211,8 +179,9 @@ void initFunction() {
 }
 
 [[noreturn]] void I2cPressureSensorTask(void *pvParameters) {
-    auto debug = static_cast<Debug *>(pvParameters);
-    const SDP610 pressureSensor(i2c1, SDA_PIN, SCL_PIN, i2cMutex);
+    const auto debug = static_cast<Debug *>(pvParameters);
+    SDP610 pressureSensor(i2c1, SDA_PIN, SCL_PIN, i2cMutex);
+    pressureSensor.init();
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000);
 
     while (true) {
@@ -230,19 +199,18 @@ void initFunction() {
     }
 }
 
-//---------------------------------------------------
-// Main
-//---------------------------------------------------
 [[noreturn]] int main() {
+
+    // REMEMBER TO TURN ON THE DRT MODE IN THE DEBUGGER TO SEE ANY DEBUG.
     initFunction();
     auto debug{std::make_shared<Debug>()};
     debug->print("Program started.\n");
 
     auto debugTask{std::make_unique<DebugTask>(debug)};
-    xTaskCreate(watchDogTimer, "WatchDogTimer", 1024, nullptr, WATCHDOG_PRIORITY, nullptr);
-    xTaskCreate(modbusFanTask, "ModbusFanTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(watchDogTimer, "WatchDogTimer", 1024, debug.get(), WATCHDOG_PRIORITY, nullptr);
+    xTaskCreate(modbusFanTask, "ModbusFanTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
     xTaskCreate(I2cPressureSensorTask, "PressureSensorTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
 
     debug->print("All tasks created. Starting scheduler.\n");

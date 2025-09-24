@@ -6,9 +6,7 @@
 
 GMP252::GMP252(std::shared_ptr<ModbusClient> modbus, SemaphoreHandle_t mutex)
     : modbus(std::move(modbus)),
-
-      slaveAddress(240),
-      initialized(true) {
+      slaveAddress(240) {
 }
 
 float GMP252::readFloatFromHoldingRegisters(uint16_t address) const {
