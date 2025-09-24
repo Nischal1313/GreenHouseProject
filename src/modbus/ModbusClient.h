@@ -30,6 +30,7 @@ private:
     std::shared_ptr<PicoOsUart> uart;
     nmbs_platform_conf platform_conf;
     nmbs_t nmbs;
+    Fmutex access;
 };
 
 

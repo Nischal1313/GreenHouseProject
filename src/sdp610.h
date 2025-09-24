@@ -2,7 +2,6 @@
 #define SDP610_H
 
 #include "hardware/i2c.h"
-#include "pico/stdlib.h"
 #include "semphr.h"
 #include "mutexGuard.h"
 
@@ -12,8 +11,6 @@
  * Notes:
  *  - This driver assumes the calling code initializes the I2C peripheral (i2c_init)
  *    and configures SDA/SCL pin functions/pull-ups once (done in main init).
- *  - The scale factor used in convertToPascals() is an example. Verify with the
- *    SDP610 datasheet and adjust FULL_SCALE_PA accordingly.
  */
 class SDP610 {
 public:
@@ -29,9 +26,6 @@ public:
     // Convert raw value to pascals (applies altitude correction if altitude_m != 0)
     [[nodiscard]] float readPressurePa(float altitude_m = 0.0f) const;
 
-    // Convert raw count to pascals (no I2C activity)
-    float convertToPascals(int16_t raw_value, float altitude_m = 0.0f) const;
-
     // Altitude correction factor (returns multiplicative factor)
     static float altitudeCorrection(float altitude_m);
 
@@ -42,12 +36,6 @@ private:
     SemaphoreHandle_t busMutex;
     uint8_t address;
     bool initialized;
-
-    // Low-level operations
-    bool softReset() const;
-    bool startMeasurement() const;
-    bool readMeasurement(int16_t &pressure) const;
-    uint8_t calculateCRC(const uint8_t *data, size_t length) const;
 };
 
 #endif // SDP610_H

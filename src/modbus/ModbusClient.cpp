@@ -1,7 +1,7 @@
 //
 // Created by Keijo Länsikunnas on 14.2.2024.
 //
-
+#include <mutex>
 #include "ModbusClient.h"
 #include "pico/time.h"
 
@@ -62,37 +62,46 @@ int32_t ModbusClient::uart_transport_write(const uint8_t *buf, uint16_t count, i
 }
 
 void ModbusClient::set_destination_rtu_address(uint8_t address) {
+    std::lock_guard<Fmutex> exclusive(access);
     nmbs_set_destination_rtu_address(&nmbs, address);
 }
 
 nmbs_error ModbusClient::read_coils(uint16_t address, uint16_t quantity, nmbs_bitfield coils_out) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_read_coils(&nmbs,address,quantity,coils_out);
 }
 
 nmbs_error ModbusClient::read_discrete_inputs(uint16_t address, uint16_t quantity, nmbs_bitfield inputs_out) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_read_discrete_inputs(&nmbs, address, quantity, inputs_out);
 }
 
 nmbs_error ModbusClient::read_holding_registers(uint16_t address, uint16_t quantity, uint16_t *registers_out) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_read_holding_registers(&nmbs, address, quantity, registers_out);
 }
 
 nmbs_error ModbusClient::read_input_registers(uint16_t address, uint16_t quantity, uint16_t *registers_out) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_read_input_registers(&nmbs, address, quantity, registers_out);
 }
 
 nmbs_error ModbusClient::write_single_coil(uint16_t address, bool value) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_write_single_coil(&nmbs, address, value);
 }
 
 nmbs_error ModbusClient::write_single_register(uint16_t address, uint16_t value) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_write_single_register(&nmbs, address, value);
 }
 
 nmbs_error ModbusClient::write_multiple_coils(uint16_t address, uint16_t quantity, const nmbs_bitfield coils) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_write_multiple_coils(&nmbs, address, quantity, coils);
 }
 
 nmbs_error ModbusClient::write_multiple_registers(uint16_t address, uint16_t quantity, const uint16_t *registers) {
+    std::lock_guard<Fmutex> exclusive(access);
     return nmbs_write_multiple_registers(&nmbs, address, quantity, registers);
 }

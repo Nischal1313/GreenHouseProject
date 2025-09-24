@@ -44,6 +44,7 @@ add_executable(${ProjectName}
         gmp252.cpp
         sdp610.cpp
         watchdog.cpp
+        debug.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE
