@@ -35,6 +35,15 @@ add_executable(${ProjectName}
         display/ssd1306os.h
         display/ssd1306os.cpp
         produalMIO.cpp
+        gmp252.cpp
+        gpio_pin.cpp
+        Fmutex.cpp
+        blinker.cpp
+        hmp60.cpp
+        produalMIO.cpp
+        gmp252.cpp
+        sdp610.cpp
+        watchdog.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE
