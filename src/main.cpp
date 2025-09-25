@@ -18,6 +18,7 @@
 #include "IPStack.h"
 #include "debug.h"
 #include "queue.h"
+#include "relayController.h"
 
 extern "C" {
 uint32_t read_runtime_ctr(void) {
@@ -27,10 +28,6 @@ uint32_t read_runtime_ctr(void) {
 constexpr int TASK_HIGH_PRIORITY = 2 + tskIDLE_PRIORITY;
 constexpr int WATCHDOG_PRIORITY = 2 + tskIDLE_PRIORITY;
 constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
-
-constexpr int BUTTON1_PIN = 7;
-constexpr int BUTTON2_PIN = 8;
-constexpr int BUTTON3_PIN = 9;
 
 constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
 constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
@@ -58,16 +55,6 @@ constexpr TickType_t WATCHDOG_TIMER = pdMS_TO_TICKS(30000);
 
 void initFunction() {
     stdio_init_all();
-    // Buttons
-    gpio_init(BUTTON1_PIN);
-    gpio_set_dir(BUTTON1_PIN, GPIO_IN);
-    gpio_pull_up(BUTTON1_PIN);
-    gpio_init(BUTTON2_PIN);
-    gpio_set_dir(BUTTON2_PIN, GPIO_IN);
-    gpio_pull_up(BUTTON2_PIN);
-    gpio_init(BUTTON3_PIN);
-    gpio_set_dir(BUTTON3_PIN, GPIO_IN);
-    gpio_pull_up(BUTTON3_PIN);
     // Create mutexes
     modbusMutex = xSemaphoreCreateMutex();
     i2cMutex = xSemaphoreCreateMutex();
@@ -206,12 +193,33 @@ void initFunction() {
     auto debug{std::make_shared<Debug>()};
     debug->print("Program started.\n");
 
+    RELAYCONTROL relay(5, debug);
+    xTaskCreate(RELAYCONTROL::taskEntry, "Relay",
+        1024, &relay, 2,
+        nullptr);
+
     auto debugTask{std::make_unique<DebugTask>(debug)};
-    xTaskCreate(watchDogTimer, "WatchDogTimer", 1024, debug.get(), WATCHDOG_PRIORITY, nullptr);
-    xTaskCreate(modbusFanTask, "ModbusFanTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(I2cPressureSensorTask, "PressureSensorTask", 1024, debug.get(), TASK_HIGH_PRIORITY, nullptr);
+
+    xTaskCreate(watchDogTimer, "WatchDogTimer",
+        1024, debug.get(),
+        WATCHDOG_PRIORITY, nullptr);
+
+    xTaskCreate(modbusFanTask, "ModbusFanTask",
+        1024, debug.get(),
+        TASK_HIGH_PRIORITY, nullptr);
+
+    xTaskCreate(modbusGmpTask, "ModbusGmpTask",
+        1024, debug.get(),
+        TASK_HIGH_PRIORITY, nullptr);
+
+    xTaskCreate(modbusHmpTask, "ModbusHmpTask",
+        1024, debug.get(),
+        TASK_HIGH_PRIORITY, nullptr);
+
+    xTaskCreate(I2cPressureSensorTask,
+        "PressureSensorTask",
+        1024, debug.get(),
+        TASK_HIGH_PRIORITY, nullptr);
 
     debug->print("All tasks created. Starting scheduler.\n");
 
