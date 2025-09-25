@@ -6,10 +6,25 @@
 
 GMP252::GMP252(std::shared_ptr<ModbusClient> modbus, SemaphoreHandle_t mutex)
     : modbus(std::move(modbus)),
+      busMutex(mutex),
       slaveAddress(240) {
+} // GMP252 default Modbus address
+
+MutexGuard GMP252::prepareModbus() const {
+    MutexGuard lock(busMutex);
+    if (lock.owns_lock()) {
+        modbus->set_destination_rtu_address(slaveAddress);
+    }
+    return lock;
 }
 
 float GMP252::readFloatFromHoldingRegisters(uint16_t address) const {
+    auto lock = prepareModbus();
+    if (!lock.owns_lock()) {
+        printf("GMP252: Failed to acquire mutex for address 0x%04X\n", address);
+        return NAN;
+    }
+
     uint16_t registers[2];
     int result = modbus->read_holding_registers(address, 2, registers);
 
@@ -17,7 +32,6 @@ float GMP252::readFloatFromHoldingRegisters(uint16_t address) const {
         printf("GMP252: Modbus error %d for address 0x%04X\n", result, address);
         return NAN;
     }
-
     // Register[1] is high word, Register[0] is low word
     uint32_t combined = (static_cast<uint32_t>(registers[1]) << 16) | registers[0];
     float floatValue;
