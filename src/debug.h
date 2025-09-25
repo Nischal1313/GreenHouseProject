@@ -12,8 +12,8 @@ struct DebugEvent {
 class Debug {
 public:
     Debug();
-    void print(const char *txt, ...);
-    DebugEvent getEvent();
+    void print(const char *txt, ...) const;
+    [[nodiscard]] DebugEvent getEvent() const;
 private:
     QueueHandle_t m_queue;
 };

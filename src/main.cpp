@@ -104,7 +104,7 @@ void initFunction() {
 [[noreturn]] void modbusFanTask(void *pvParameters) {
     const ModbusMIO modbusFan(modbus);
     const auto debug = static_cast<Debug *>(pvParameters);
-    constexpr TickType_t taskDelay = pdMS_TO_TICKS(50000);
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(60000);
     while (true) {
         constexpr float desiredFanSpeed = 0.0f;
         bool success = modbusFan.setFanSpeed(desiredFanSpeed);
@@ -131,7 +131,7 @@ void initFunction() {
 [[noreturn]] void modbusGmpTask(void *pvParameters) {
     const auto debug = static_cast<Debug *>(pvParameters);
     const GMP252 gmpSensor(modbus, modbusMutex);
-    constexpr TickType_t taskDelay = pdMS_TO_TICKS(2000);
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000);
     while (true) {
         const float co2 = gmpSensor.readMeasuredCO2();
         if (!std::isnan(co2)) {
@@ -149,7 +149,7 @@ void initFunction() {
 [[noreturn]] void modbusHmpTask(void *pvParameters) {
     const auto debug = static_cast<Debug *>(pvParameters);
     const HMP60 hmpSensor(modbus, modbusMutex);
-    constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000);
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000);
     while (true) {
         const float hum = hmpSensor.readHumidity();
         const float temp = hmpSensor.readTemperature();
@@ -169,7 +169,7 @@ void initFunction() {
     const auto debug = static_cast<Debug *>(pvParameters);
     SDP610 pressureSensor(i2c1, SDA_PIN, SCL_PIN, i2cMutex);
     pressureSensor.init();
-    constexpr TickType_t taskDelay = pdMS_TO_TICKS(4000);
+    constexpr TickType_t taskDelay = pdMS_TO_TICKS(5000);
 
     while (true) {
         float pressure = pressureSensor.readPressurePa();
@@ -186,19 +186,25 @@ void initFunction() {
     }
 }
 
-[[noreturn]] int main() {
+[[noreturn]] void relayTask(void *pvParameters) {
+    RELAYCONTROL valve(9);
+    while (true) {
+        valve.taskStep();
+        vTaskDelay(100);
+    }
+}
 
+
+[[noreturn]] int main() {
     // REMEMBER TO TURN ON THE DRT MODE IN THE DEBUGGER TO SEE ANY DEBUG.
     initFunction();
     auto debug{std::make_shared<Debug>()};
+    auto debugTask{std::make_unique<DebugTask>(debug)};
     debug->print("Program started.\n");
 
-    RELAYCONTROL relay(5, debug);
-    xTaskCreate(RELAYCONTROL::taskEntry, "Relay",
-        1024, &relay, 2,
-        nullptr);
-
-    auto debugTask{std::make_unique<DebugTask>(debug)};
+    xTaskCreate(relayTask, "Relay Task",
+        1024, debug.get(),
+        TASK_HIGH_PRIORITY, nullptr);
 
     xTaskCreate(watchDogTimer, "WatchDogTimer",
         1024, debug.get(),

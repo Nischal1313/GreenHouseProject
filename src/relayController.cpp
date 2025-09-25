@@ -1,56 +1,55 @@
-#include <FreeRTOS.h>
 #include "relayController.h"
 #include "hardware/gpio.h"
 #include "pico/time.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include <cstdio>
 
-RELAYCONTROL::RELAYCONTROL(const int buttonPin, std::shared_ptr<Debug> debug)
-    : buttonPin(buttonPin), valveState(false), m_debug(std::move(debug)) {
+RELAYCONTROL::RELAYCONTROL(int buttonPin)
+    : buttonPin(buttonPin), valveState(false) {
+
     lastOpenTime = get_absolute_time();
 
-    // Init valve pin
+    // Initialize valve pin
     gpio_init(VALVE_PIN);
     gpio_set_dir(VALVE_PIN, GPIO_OUT);
     gpio_put(VALVE_PIN, false);
 
-    // Init button pin
+    // Initialize button pin (active low)
     gpio_init(buttonPin);
     gpio_set_dir(buttonPin, GPIO_IN);
     gpio_pull_up(buttonPin);
 
-    m_debug->print("RelayControl initialized.\n");
 }
 
 void RELAYCONTROL::openValve() {
     gpio_put(VALVE_PIN, true);
     valveState = true;
     lastOpenTime = get_absolute_time();
-    m_debug->print("VALVE: Opened (GPIO%d)\n", VALVE_PIN);
+    printf("Valve opened for 1.8 s \n");
+    vTaskDelay(30);
 }
 
 void RELAYCONTROL::closeValve() {
     gpio_put(VALVE_PIN, false);
     valveState = false;
-    m_debug->print("VALVE: Closed (GPIO%d)\n", VALVE_PIN);
 }
 
-bool RELAYCONTROL::buttonPressed() const {
-    return gpio_get(buttonPin) == 0;
-}
+void RELAYCONTROL::taskStep() {
+    if (!gpio_get(buttonPin)) {
+        while (!gpio_get(buttonPin)) {
+            vTaskDelay(TASK_DELAY_TIME);
+        }
 
-bool RELAYCONTROL::canPressButton() const {
-    if (valveState) return false;
-    return (get_absolute_time() - lastOpenTime) >= make_timeout_time_ms(MIN_WAIT_TIME_MS);
-}
+        int64_t elapsedMs = absolute_time_diff_us(lastOpenTime, get_absolute_time()) / 1000;
+        printf("%lld ms elapsed. Wait until: %d ms)\n",
+               elapsedMs, MIN_WAIT_TIME_MS);
 
-void RELAYCONTROL::taskLoop() {
-    while (true) {
-        if (buttonPressed() && canPressButton()) {
+        if (!valveState && elapsedMs >= MIN_WAIT_TIME_MS) {
             openValve();
             vTaskDelay(pdMS_TO_TICKS(VALVE_OPEN_TIME_MS));
             closeValve();
-            vTaskDelay(pdMS_TO_TICKS(MIN_WAIT_TIME_MS));
+            lastOpenTime = get_absolute_time();
         }
-
-        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

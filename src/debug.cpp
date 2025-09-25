@@ -10,7 +10,7 @@
 void debugTask(void *pvParameters);
 
 Debug::Debug(): m_queue{xQueueCreate(20, sizeof(DebugEvent))}{}
-void Debug::print(const char *txt, ...) {
+void Debug::print(const char *txt, ...) const {
     DebugEvent e{};
     e.timestamp = xTaskGetTickCount();
 
@@ -23,7 +23,7 @@ void Debug::print(const char *txt, ...) {
     xQueueSend(m_queue, &e, 0);
 }
 
-DebugEvent Debug::getEvent() {
+DebugEvent Debug::getEvent() const {
     DebugEvent e{};
     xQueueReceive(m_queue, &e, portMAX_DELAY);
     return e;
