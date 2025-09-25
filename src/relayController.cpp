@@ -3,7 +3,7 @@
 #include "hardware/gpio.h"
 #include "pico/time.h"
 
-RELAYCONTROL::RELAYCONTROL(int buttonPin, std::shared_ptr<Debug> debug)
+RELAYCONTROL::RELAYCONTROL(const int buttonPin, std::shared_ptr<Debug> debug)
     : buttonPin(buttonPin), valveState(false), m_debug(std::move(debug)) {
     lastOpenTime = get_absolute_time();
 
@@ -15,10 +15,9 @@ RELAYCONTROL::RELAYCONTROL(int buttonPin, std::shared_ptr<Debug> debug)
     // Init button pin
     gpio_init(buttonPin);
     gpio_set_dir(buttonPin, GPIO_IN);
-    gpio_pull_up(buttonPin); // button active low (typical)
+    gpio_pull_up(buttonPin);
 
-    m_debug->print("RelayControl initialized. Valve GPIO%d, Button GPIO%d\n",
-                   VALVE_PIN, buttonPin);
+    m_debug->print("RelayControl initialized.\n");
 }
 
 void RELAYCONTROL::openValve() {
@@ -35,13 +34,12 @@ void RELAYCONTROL::closeValve() {
 }
 
 bool RELAYCONTROL::buttonPressed() const {
-    // Active low button
     return gpio_get(buttonPin) == 0;
 }
 
 bool RELAYCONTROL::canPressButton() const {
     if (valveState) return false;
-    return (get_absolute_time() - lastOpenTime) >= make_timeout_time_ms(MIN_WAIT_TIME_MS)._private_us_since_boot;
+    return (get_absolute_time() - lastOpenTime) >= make_timeout_time_ms(MIN_WAIT_TIME_MS);
 }
 
 void RELAYCONTROL::taskLoop() {

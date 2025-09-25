@@ -1,7 +1,7 @@
 #ifndef C02VALVE
 #define C02VALVE
+#include <FreeRTOS.h>
 #include "debug.h"
-#include <memory>
 
 constexpr int VALVE_PIN   = 27;   // fixed valve pin
 constexpr int BUTTON_PIN = 7;    // user button
@@ -21,8 +21,8 @@ private:
     void taskLoop();
     void openValve();
     void closeValve();
-    bool buttonPressed() const;
-    bool canPressButton() const;
+    [[nodiscard]] bool buttonPressed() const;
+    [[nodiscard]] bool canPressButton() const;
 
     int buttonPin;
     bool valveState;

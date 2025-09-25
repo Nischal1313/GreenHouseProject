@@ -102,7 +102,7 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusFanTask(void *pvParameters) {
-    const ModbusMIO modbusFan(modbus, modbusMutex);
+    const ModbusMIO modbusFan(modbus);
     const auto debug = static_cast<Debug *>(pvParameters);
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(50000);
     while (true) {

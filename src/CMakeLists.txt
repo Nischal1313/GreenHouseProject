@@ -45,6 +45,7 @@ add_executable(${ProjectName}
         sdp610.cpp
         watchdog.cpp
         debug.cpp
+        relayController.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE
