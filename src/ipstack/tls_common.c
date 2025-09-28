@@ -27,6 +27,7 @@ typedef struct TLS_CLIENT_T_ {
 
 static struct altcp_tls_config *tls_config = NULL;
 
+
 static err_t tls_client_close(void *arg) {
     TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
     err_t err = ERR_OK;

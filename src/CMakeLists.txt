@@ -5,6 +5,8 @@ add_executable(${ProjectName}
         Fmutex.h
         blinker.cpp
         blinker.h
+        cloudtask.cpp
+        cloudtask.h
 
         ipstack/IPStack.cpp
         ipstack/IPStack.h
@@ -56,10 +58,9 @@ target_include_directories(${ProjectName} PRIVATE
 )
 
 target_compile_definitions(${ProjectName} PRIVATE
-#        WIFI_SSID=\"$ENV{WIFI_SSID}\"
-#        WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
-        WIFI_SSID="Pixel,"
-        WIFI_PASSWORD="10203044"
+        WIFI_SSID=\"$ENV{WIFI_SSID}\"
+        WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
+
         NO_SYS=0            # don't want NO_SYS (generally this would be in your lwipopts.h)
         PICO_CYW43_ARCH_DEFAULT_COUNTRY_CODE=CYW43_COUNTRY_FINLAND
 )

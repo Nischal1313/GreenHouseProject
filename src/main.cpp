@@ -16,7 +16,8 @@
 #include "mutexGuard.h"
 #include "hmp60.h"
 #include "sdp610.h"
-#include "IPStack.h"
+#include "cloudtask.h"
+#include "SharedResources.h"
 
 //---------------------------------------------------
 // Runtime counter required by some drivers
@@ -35,11 +36,12 @@ constexpr int WATCHDOG_PRIORITY = 2 + tskIDLE_PRIORITY;
 constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
 
 //---------------------------------------------------
-// Buttons
+// Buttons and LED's
 //---------------------------------------------------
 constexpr int BUTTON1_PIN = 7;
 constexpr int BUTTON2_PIN = 8;
 constexpr int BUTTON3_PIN = 9;
+constexpr uint LED_PIN = 22;
 
 //---------------------------------------------------
 // Event group bits
@@ -66,6 +68,7 @@ SemaphoreHandle_t buttonMutex;
 
 std::shared_ptr<PicoOsUart> uart;
 std::shared_ptr<ModbusClient> modbus;
+std::shared_ptr<SharedResources> sharedResources;
 
 ModbusMIO *modbusFan;
 GMP252 *gmpSensor;
@@ -112,6 +115,20 @@ void initFunction() {
     gpio_init(BUTTON3_PIN);
     gpio_set_dir(BUTTON3_PIN, GPIO_IN);
     gpio_pull_up(BUTTON3_PIN);
+
+    // LED
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+
+    //Shared resources
+    sharedResources = std::make_shared<SharedResources>();
+    sharedResources->co2_ppm = 0;
+    sharedResources->humidity = 0;
+    sharedResources->temperature = 0;
+    sharedResources->fan_speed = 0;
+    sharedResources->co2_setpoint = 1000; // example default
+
+    sharedResources->mutex = xSemaphoreCreateMutex();
 
     // Create mutexes
     modbusMutex = xSemaphoreCreateMutex();
@@ -186,11 +203,18 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusFanTask(void *pvParameters) {
+    auto *res = (SharedResources *) pvParameters;
+
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(50000);
     while (true) {
         constexpr float desiredFanSpeed = 0.0f;
         bool success = modbusFan->setFanSpeed(desiredFanSpeed);
         bool fanRunning = modbusFan->isFanRunning();
+
+        if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            res->fan_speed = desiredFanSpeed;
+            xSemaphoreGive(res->mutex);
+        }
 
         char buf[128];
         if (success) {
@@ -211,10 +235,17 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusGmpTask(void *pvParameters) {
+    auto *res = (SharedResources *) pvParameters;
+
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(2000);
     while (true) {
         const float co2 = gmpSensor->readMeasuredCO2();
         if (!std::isnan(co2)) {
+            if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                res->co2_ppm = co2;
+                xSemaphoreGive(res->mutex);
+            }
+
             char buf[128];
             snprintf(buf, sizeof(buf),
                      "GMP252 - CO2: %.1f ppm\n", co2);
@@ -227,12 +258,19 @@ void initFunction() {
 }
 
 [[noreturn]] void modbusHmpTask(void *pvParameters) {
+    auto *res = (SharedResources *) pvParameters;
+
     constexpr TickType_t taskDelay = pdMS_TO_TICKS(3000);
     while (true) {
         const float hum = hmpSensor->readHumidity();
         const float temp = hmpSensor->readTemperature();
 
         if (!std::isnan(hum) && !std::isnan(temp)) {
+            if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                res->humidity    = hum;
+                res->temperature = temp;
+                xSemaphoreGive(res->mutex);
+            }
             char buf[128];
             snprintf(buf, sizeof(buf), "HMP60 - Humidity: %.1f%%, Temperature: %.1fC\n", hum, temp);
             debug(buf);
@@ -263,6 +301,37 @@ void initFunction() {
     }
 }
 
+[[noreturn]] void Cloudtask(void *pvParameters) {
+    auto *res = (SharedResources *) pvParameters;
+
+    CloudClass cloud(std::shared_ptr<SharedResources>(res, [](SharedResources*){}));
+    cloud.connect();
+
+    while (true) {
+        // Blink LED to show task is alive
+        gpio_put(LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        gpio_put(LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            int co2  = (int)res->co2_ppm;
+            int hum  = (int)res->humidity;
+            int temp = (int)res->temperature;
+            int fan  = (int)res->fan_speed;
+            int sp   = (int)res->co2_setpoint;
+            xSemaphoreGive(res->mutex);
+
+            cloud.sendAndreceive(co2, temp, hum, fan, sp);
+        } else {
+            debug("Cloudtask: Failed to acquire mutex for shared resources\n");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Wait before checking again
+    }
+}
+
+
 //---------------------------------------------------
 // Main
 //---------------------------------------------------
@@ -272,9 +341,10 @@ void initFunction() {
 
     xTaskCreate(debugTask, "DebugTask", 1024, nullptr, TASK_LOW_PRIORITY, nullptr);
     xTaskCreate(watchDogTimer, "WatchDogTimer", 1024, nullptr, WATCHDOG_PRIORITY, nullptr);
-    xTaskCreate(modbusFanTask, "ModbusFanTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
-    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusFanTask, "ModbusFanTask", 1024, sharedResources.get(), TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusGmpTask, "ModbusGmpTask", 1024, sharedResources.get(), TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(modbusHmpTask, "ModbusHmpTask", 1024, sharedResources.get(), TASK_HIGH_PRIORITY, nullptr);
+    xTaskCreate(Cloudtask, "Cloudtask", 2048, sharedResources.get(), TASK_HIGH_PRIORITY, nullptr);
     xTaskCreate(I2cPressureSensorTask, "PressureSensorTask", 1024, nullptr, TASK_HIGH_PRIORITY, nullptr);
 
     debug("All tasks created. Starting scheduler.\n");
