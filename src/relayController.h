@@ -12,11 +12,10 @@ class RELAYCONTROL {
 public:
     explicit RELAYCONTROL(int buttonPin);
     void taskStep();
-
-private:
     void openValve();
     void closeValve();
 
+private:
     int buttonPin;
     bool valveState;
     absolute_time_t lastOpenTime;
