@@ -1,6 +1,9 @@
 #include <algorithm>
 #include <cstdio>
 #include "produalMIO.h"
+
+#include <cmath>
+
 #include "pico/time.h"
 
 ModbusMIO::ModbusMIO(std::shared_ptr<ModbusClient> modbus,
@@ -45,4 +48,24 @@ bool ModbusMIO::setFanSpeed(float percent) const {
         return true;
     }
     return false;
+}
+
+float ModbusMIO::readFanSpeed() const {
+    MutexGuard lock(busMutex);
+    if (!lock.owns_lock()) {
+        printf("Failed to acquire Modbus mutex in readFanSpeed()\n");
+        return NAN;
+    }
+
+    modbus->set_destination_rtu_address(slaveAddress);
+
+    uint16_t value{};
+    nmbs_error err = modbus->read_holding_registers(REG_AO1, 1, &value);
+    if (err != NMBS_ERROR_NONE) {
+        printf("Modbus read error %d in readFanSpeed()\n", err);
+        return NAN;
+    }
+
+    // Convert 0–1000 (0–10V) → 0–100%
+    return (static_cast<float>(value) / 1000.0f) * 100.0f;
 }

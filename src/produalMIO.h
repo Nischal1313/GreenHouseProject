@@ -19,6 +19,7 @@ public:
 
     [[nodiscard]] bool setFanSpeed(float percent) const;
     [[nodiscard]] bool isFanRunning() const;
+    [[nodiscard]] float readFanSpeed() const;
 
 private:
     std::shared_ptr<ModbusClient> modbus;
