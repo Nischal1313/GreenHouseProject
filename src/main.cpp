@@ -112,8 +112,7 @@ void init_function() {
             snprintf(buf, sizeof(buf), "Fan speed set to %.1f%%, fan is running\n", desiredFanSpeed);
             debug->print(buf);
         }
-        debug->print(buf);
-        snprintf(buf, sizeof(buf), "Speed %.1f%%", speed);
+        snprintf(buf, sizeof(buf), "Speed %.1f%%\n", speed);
         debug->print(buf);
         display.text(buf, 2, 30);
         xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
@@ -168,6 +167,7 @@ void init_function() {
 
 
 int main() {
+    display.fill(0);
     stdio_init_all();
     init_function();
     auto debug{std::make_shared<Debug>()};

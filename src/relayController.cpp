@@ -5,7 +5,7 @@
 #include "task.h"
 #include <cstdio>
 
-RELAYCONTROL::RELAYCONTROL(int buttonPin)
+RELAYCONTROL::RELAYCONTROL(const int buttonPin)
     : buttonPin(buttonPin), valveState(false) {
 
     lastOpenTime = get_absolute_time();
@@ -27,7 +27,7 @@ void RELAYCONTROL::openValve() {
     valveState = true;
     lastOpenTime = get_absolute_time();
     printf("Valve opened for 1.8 s \n");
-    vTaskDelay(30);
+    vTaskDelay(MIN_WAIT_TIME_MS);
 }
 
 void RELAYCONTROL::closeValve() {
