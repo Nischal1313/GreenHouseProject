@@ -30,8 +30,6 @@ add_executable(${ProjectName}
         display/framebuf.h
         display/mono_vlsb.cpp
         display/mono_vlsb.h
-#        display/ssd1306.cpp
-#        display/ssd1306.h
         display/ssd1306os.h
         display/ssd1306os.cpp
         produalMIO.cpp
@@ -46,6 +44,7 @@ add_executable(${ProjectName}
         watchdog.cpp
         debug.cpp
         relayController.cpp
+        displayMenu.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE
