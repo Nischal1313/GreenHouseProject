@@ -4,7 +4,7 @@
 #include <cmath> // for NAN
 #include <cstring> // for memcpy
 
-GMP252::GMP252(std::shared_ptr<ModbusClient> modbus, SemaphoreHandle_t mutex)
+GMP252::GMP252(std::shared_ptr<ModbusClient> modbus, const SemaphoreHandle_t mutex)
     : modbus(std::move(modbus)),
       busMutex(mutex),
       slaveAddress(240) {

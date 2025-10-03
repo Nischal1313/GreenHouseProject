@@ -1,100 +1,55 @@
-#ifndef DISPLAY_SYSTEM_H
-#define DISPLAY_SYSTEM_H
-
-#include <queue>
+#pragma once
+#include <memory>
 #include "ssd1306os.h"
-#include "hardware/gpio.h"
-#include "pico/time.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include <memory>
-#include <functional>
-#include "semphr.h" // Added for SemaphoreHandle_t
-#include "pico/sem.h"
+#include "queue.h"
+#include "semphr.h"
+#include "hardware/gpio.h"
+#include <cstdint>
 
-enum class DisplayItemType {
-    CO2,
-    HUMIDITY,
-    TEMPERATURE,
-    PRESSURE,
-    FAN_STATUS
-};
-
-struct DisplayEvent {
-    DisplayItemType type;
-    float value;
-    bool boolValue; // For fan status
-    uint32_t timestamp;
-};
-
-class DisplaySystem {
+class HANDLEC02INPUT {
 public:
-    // Added semaphore to constructor signature
-    explicit DisplaySystem(std::shared_ptr<ssd1306os> screen, uint8_t buttonPin = 8, uint8_t encoderPinA = 10, uint8_t encoderPinB = 11);
+    // Hardcoded pins (no magic numbers in main)
+    static constexpr uint8_t ENCODER_PIN_A = 10;
+    static constexpr uint8_t ENCODER_PIN_B = 11;
+    static constexpr uint8_t BUTTON_PIN    = 8;
 
-    // Methods to update display items (similar to debug->print)
-    void item(DisplayItemType type, float value) const;
+    // Constructor auto-initializes pins, semaphore, queue and starts no tasks by itself.
+    HANDLEC02INPUT();
 
-    void item(DisplayItemType type, bool value) const; // For boolean values like fan status
+    // Start the internal FreeRTOS tasks (encoder handler + display sender)
+    // Pass the shared oled pointer (by const ref) so we don't copy unnecessarily.
+    void startTasks(const std::shared_ptr<ssd1306os>& oled);
 
-    // Set callbacks for control actions
-    void setFanSpeedCallback(std::function<void(float)> callback);
+    // Getter for the setpoint. -1 == unset.
+    [[nodiscard]] int getDesiredValue() const;
 
-    void setValveOpenCallback(std::function<void()> callback);
-
-    // Internal method for display task
-    [[nodiscard]] DisplayEvent getEvent() const;
-
-    void processInput(); // Handle button and encoder input
-    void updateDisplay(); // Update the display
+    // Destructor cleans up (not strictly necessary on embedded where app runs forever).
+    ~HANDLEC02INPUT();
 
 private:
-    QueueHandle_t m_queue;
-    std::shared_ptr<ssd1306os> screen;
+    // Internal state
+    volatile int desiredCO2Value; // -1 == unset
+    volatile int lockedValue;     // last locked value (or -1)
+    volatile bool locked;         // currently locked for 40s
+    volatile TickType_t lockTick; // tick when locked
+    volatile TickType_t lastChangeTick; // last rotation tick (for 3s revert)
 
-    // Input handling
-    uint8_t buttonPin;
-    uint8_t encoderPinA;
-    uint8_t encoderPinB;
+    // RTOS objects owned by instance
+    SemaphoreHandle_t gpioSem; // given from ISR
+    QueueHandle_t displayQueue; // messages for display
+    TaskHandle_t encoderTaskHandle;
+    TaskHandle_t displayWorkerHandle;
 
-    // Menu state
-    enum MenuState {
-        MENU_SENSORS_1, // CO2 and Humidity
-        MENU_SENSORS_2, // Temperature and Pressure
-        MENU_VALVE, // Valve control
-        MENU_FAN_SPEED // Fan speed control
+    // private methods
+    static void gpio_isr(uint gpio, uint32_t events); // ISR forwarding to semaphore
+    static void encoderTaskFn(void* pv);
+    static void displayWorkerFn(void* pv);
+
+    // small struct for queue messages
+    struct DisplayMsg {
+        char text[40];
+        uint8_t y; // vertical position on screen
     };
-
-    MenuState currentMenu;
-    bool lastButtonState;
-    int lastEncoderA;
-    float fanSpeed;
-
-    // Latest sensor values
-    float co2Value;
-    float humidityValue;
-    float temperatureValue;
-    float pressureValue;
-    bool fanRunningValue;
-
-    // Callbacks
-    std::function<void(float)> fanSpeedCallback;
-    std::function<void()> valveOpenCallback;
-
-    absolute_time_t lastButtonPress;
-    static constexpr uint32_t DEBOUNCE_TIME_US = 200000; // 200ms
 };
-
-class DisplayTask {
-public:
-    explicit DisplayTask(std::shared_ptr<DisplaySystem> displaySystem);
-
-    [[noreturn]] void run() const;
-
-private:
-    std::shared_ptr<DisplaySystem> m_displaySystem;
-    QueueHandle_t m_queue{};
-    std::shared_ptr<ssd1306os> screen;
-};
-
-#endif // DISPLAY_SYSTEM_H

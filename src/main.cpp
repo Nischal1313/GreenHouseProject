@@ -1,27 +1,26 @@
-//if the co2 value is over 2000 full blast fan.
 #include <cmath>
-#include <iostream>
-#include <sstream>
+#include <cstdio>
+#include <memory>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "semphr.h"
-#include "hardware/gpio.h"
-#include "PicoOsUart.h"
-
-#include "hardware/timer.h"
-#include "pico/stdio.h"
-
-#include <cstdio>
-
-#include "debug.h"
 #include "event_groups.h"
-#include "ModbusClient.h"
+#include "hardware/gpio.h"
+#include "pico/stdio.h"
+#include "PicoOsUart.h"
 
 #include "ssd1306os.h"
 #include "gmp252.h"
 #include "hmp60.h"
 #include "produalMIO.h"
-#include "relayController.h"
+#include "displayMenu.h"
+#include "debug.h"
+
+// Globals
+EventGroupHandle_t eventGroup;
+constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
+constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
+constexpr EventBits_t BIT_TASK_HMP = (1 << 2);
+constexpr EventBits_t ALL_TASK_BITS = BIT_TASK_FAN | BIT_TASK_GMP | BIT_TASK_HMP;
 
 extern "C" {
 uint32_t read_runtime_ctr(void) {
@@ -30,35 +29,25 @@ uint32_t read_runtime_ctr(void) {
 }
 
 const SemaphoreHandle_t modbusMutex = xSemaphoreCreateMutex();
-auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256); // tx=4, rx=5
+auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
 auto modbus = std::make_shared<ModbusClient>(uart);
 auto i2cbus = std::make_shared<PicoI2C>(1, 400000);
-ssd1306os display(i2cbus);
-// Event group and debug queue
-EventGroupHandle_t eventGroup;
-
-constexpr TickType_t WATCHDOG_TIMER = pdMS_TO_TICKS(30000);
-
-constexpr int TASK_HIGH_PRIORITY = 2 + tskIDLE_PRIORITY;
-constexpr int WATCHDOG_PRIORITY = 2 + tskIDLE_PRIORITY;
-constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
-
-constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
-constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
-constexpr EventBits_t BIT_TASK_HMP = (1 << 2);
-constexpr EventBits_t ALL_TASK_BITS = BIT_TASK_FAN | BIT_TASK_GMP | BIT_TASK_HMP;
-
+auto oledShared = std::make_shared<ssd1306os>(i2cbus);
+HANDLEC02INPUT co2Input;
+// EncoderHandler encoderHandler(ENCODER_PIN_A, ENCODER_PIN_B);
+GMP252 gmp252(modbus, modbusMutex);
 
 void init_function() {
     eventGroup = xEventGroupCreate();
 }
 
+// --- Task Implementations ---
 
 [[noreturn]] void modbusGmpTask(void *pvParameters) {
-    const auto debug = static_cast<Debug *>(pvParameters);
-    const GMP252 gmpSensor(modbus, modbusMutex);
+    auto *debug = static_cast<Debug *>(pvParameters);
+
     while (true) {
-        float co2 = gmpSensor.readMeasuredCO2();
+        float co2 = gmp252.readMeasuredCO2();
         char buf[64];
         if (!std::isnan(co2)) {
             snprintf(buf, sizeof(buf), "CO2: %.1f ppm\n", co2);
@@ -68,76 +57,63 @@ void init_function() {
             debug->print(buf);
         }
 
-        display.text(buf, 2, 10);
-        display.show();
+        oledShared->text(buf, 2, 10);
+        oledShared->show();
         xEventGroupSetBits(eventGroup, BIT_TASK_GMP);
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
 
 [[noreturn]] void modbusHmpTask(void *pvParameters) {
-    // Initialize sensor with modbus + mutex
-    const auto debug = static_cast<Debug *>(pvParameters);
-    const HMP60 hmpSensor(modbus, modbusMutex);
+    auto *debug = static_cast<Debug *>(pvParameters);
+    HMP60 hmpSensor(modbus, modbusMutex);
+
     while (true) {
-        const float hum = hmpSensor.readHumidity();
-        const float temp = hmpSensor.readTemperature();
+        float hum = hmpSensor.readHumidity();
+        float temp = hmpSensor.readTemperature();
         char buf[64];
+
         if (!std::isnan(hum) && !std::isnan(temp)) {
-            snprintf(buf, sizeof(buf), "%.1f |,%.1f \n", hum, temp);
+            snprintf(buf, sizeof(buf), "%.1f%% | %.1f°C\n", hum, temp);
             debug->print(buf);
         } else {
             snprintf(buf, sizeof(buf), "Sensor error\n");
             debug->print(buf);
         }
-        display.text(buf, 2, 20);
-        display.show();
+
+        oledShared->text(buf, 2, 20);
+        oledShared->show();
         xEventGroupSetBits(eventGroup, BIT_TASK_HMP);
         vTaskDelay(pdMS_TO_TICKS(8000));
     }
 }
 
+[[noreturn]] void modbusControlTask(void *pvParameters) {
+    auto *debug = static_cast<Debug *>(pvParameters);
+    ModbusMIO modbusSystem(modbus, modbusMutex, oledShared);
 
-[[noreturn]] void modbusFanTask(void *pvParameters) {
-    const ModbusMIO modbusFan(modbus, modbusMutex);
-    const auto debug = static_cast<Debug *>(pvParameters);
-    constexpr TickType_t taskDelay = pdMS_TO_TICKS(9000);
     while (true) {
-        constexpr float desiredFanSpeed = 0.0f;
-        const bool success = modbusFan.setFanSpeed(desiredFanSpeed);
-        const float speed = modbusFan.readFanSpeed();
+        // int desiredValue = encoderHandler.getDesiredValue();
+        const int desiredValue = co2Input.getDesiredValue();
+        const int co2Value = static_cast<int>(gmp252.readMeasuredCO2());
+
+        modbusSystem.controlLoop(gmp252, desiredValue); // handles fan + valve + display
 
         char buf[128];
-        if (success) {
-            snprintf(buf, sizeof(buf), "Fan speed set to %.1f%%, fan is running\n", desiredFanSpeed);
-            debug->print(buf);
-        }
-        snprintf(buf, sizeof(buf), "Speed %.1f%%\n", speed);
+        snprintf(buf, sizeof(buf), "CO2=%d ppm, Desired=%d ppm\n", co2Value, desiredValue);
         debug->print(buf);
-        display.text(buf, 2, 30);
+
         xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
-        vTaskDelay(taskDelay);
+        vTaskDelay(pdMS_TO_TICKS(4000));
     }
 }
-
-[[noreturn]] void relayTask(void *pvParameters) {
-    RELAYCONTROL valve(9);
-    while (true) {
-        valve.taskStep();
-        xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
-        vTaskDelay(100);
-    }
-}
-
 
 [[noreturn]] void watchDogTimer(void *pvParameters) {
-    const auto debug = static_cast<Debug *>(pvParameters);
+    auto *debug = static_cast<Debug *>(pvParameters);
     TickType_t lastOK = xTaskGetTickCount();
-    while (true) {
-        const EventBits_t result = xEventGroupWaitBits(eventGroup, ALL_TASK_BITS,
-            pdTRUE, pdTRUE, WATCHDOG_TIMER);
 
-        char buf[128];
+    while (true) {
+        EventBits_t result = xEventGroupWaitBits(eventGroup, ALL_TASK_BITS, pdTRUE, pdTRUE, pdMS_TO_TICKS(30000));
         char wdStatus[32];
         snprintf(wdStatus, sizeof(wdStatus), "W.D.[%c,%c,%c]",
                  (result & BIT_TASK_FAN) ? '1' : '#',
@@ -146,6 +122,7 @@ void init_function() {
 
         if ((result & ALL_TASK_BITS) == ALL_TASK_BITS) {
             TickType_t now = xTaskGetTickCount();
+            char buf[128];
             snprintf(buf, sizeof(buf), "Watchdog: OK, %lu ms since last OK\n",
                      static_cast<unsigned long>((now - lastOK) * portTICK_PERIOD_MS));
             debug->print(buf);
@@ -158,41 +135,30 @@ void init_function() {
             debug->print("\n");
         }
 
-        display.text(wdStatus, 2, 40);
-        display.show();
-
+        oledShared->text(wdStatus, 2, 40);
+        oledShared->show();
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
-
+// --- Main Function ---
 int main() {
-    display.fill(0);
     stdio_init_all();
     init_function();
-    auto debug{std::make_shared<Debug>()};
-    auto debugTask{std::make_unique<DebugTask>(debug)};
+
+    oledShared->fill(0);
+    auto debug = std::make_shared<Debug>();
+    auto debugTask = std::make_unique<DebugTask>(debug);
     debug->print("Program started.\n");
-
-    xTaskCreate(watchDogTimer, "WatchDogTimer",
-                1024, debug.get(),
-                WATCHDOG_PRIORITY, nullptr);
-
-    xTaskCreate(modbusGmpTask, "SSD1306", 512, debug.get(),
-                tskIDLE_PRIORITY + 1, nullptr);
-
-    xTaskCreate(modbusFanTask, "nn", 512, debug.get(),
-                tskIDLE_PRIORITY + 1, nullptr);
-
-    xTaskCreate(modbusHmpTask, "HMP", 512, debug.get(),
-                1, nullptr);
-
-    xTaskCreate(relayTask, "Relay Task",
-                1024, debug.get(),
-                1, nullptr);
+    co2Input.startTasks(oledShared);
+    // Create tasks
+    xTaskCreate(watchDogTimer, "WatchDogTimer", 1024, debug.get(), tskIDLE_PRIORITY + 1, nullptr);
+    xTaskCreate(modbusGmpTask, "CO2Task", 512, debug.get(), tskIDLE_PRIORITY + 1, nullptr);
+    xTaskCreate(modbusHmpTask, "HMPTask", 512, debug.get(), tskIDLE_PRIORITY + 1, nullptr);
+    xTaskCreate(modbusControlTask, "ControlTask", 512, debug.get(), tskIDLE_PRIORITY + 2, nullptr); // highest priority
 
     vTaskStartScheduler();
 
     while (true) {
-    };
+    } // Should never reach here
 }

@@ -1,227 +1,234 @@
 #include "displayMenu.h"
+
+#include <algorithm>
+
+#include "pico/time.h"
 #include <cstdio>
-#include <cmath>
-#include <utility>
+#include <cstring>
 
-void displayTaskFunc(void *pvParameters);
+// Configure priorities (adjust if you prefer)
+static constexpr UBaseType_t ENCODER_TASK_PRIO = tskIDLE_PRIORITY + 4;
+static constexpr UBaseType_t DISPLAY_TASK_PRIO = tskIDLE_PRIORITY + 2;
 
-// FIX 1: UPDATE CONSTRUCTOR SIGNATURE AND INITIALIZATION LIST
-DisplaySystem::DisplaySystem(std::shared_ptr<ssd1306os> screen, const uint8_t buttonPin, uint8_t encoderPinA,
-                             uint8_t encoderPinB)
-    : m_queue(xQueueCreate(10, sizeof(DisplayEvent))), screen(std::move(screen)),
-      buttonPin(buttonPin), encoderPinA(encoderPinA), encoderPinB(encoderPinB),
-      currentMenu(MENU_SENSORS_1), lastButtonState(true), lastEncoderA(0), fanSpeed(0.0f),
-      co2Value(0), humidityValue(0), temperatureValue(0), pressureValue(0), fanRunningValue(false),
-      lastButtonPress(get_absolute_time()) {
+// Timing constants
+static constexpr TickType_t REVERT_DELAY = pdMS_TO_TICKS(3000);  // 3s
+static constexpr TickType_t LOCK_TIME    = pdMS_TO_TICKS(40000); // 40s
 
-    // Initialize button pin (active low with pullup)
-    gpio_init(buttonPin);
-    gpio_set_dir(buttonPin, GPIO_IN);
-    gpio_pull_up(buttonPin);
+// Forward declare to allow ISR static access
+static HANDLEC02INPUT* s_instance_for_isr = nullptr;
 
-    // Initialize encoder pins
-    gpio_init(encoderPinA);
-    gpio_set_dir(encoderPinA, GPIO_IN);
-    gpio_pull_up(encoderPinA);
+HANDLEC02INPUT::HANDLEC02INPUT()
+    : desiredCO2Value(-1),
+      lockedValue(-1),
+      locked(false),
+      lockTick(0),
+      lastChangeTick(0),
+      gpioSem(nullptr),
+      displayQueue(nullptr),
+      encoderTaskHandle(nullptr),
+      displayWorkerHandle(nullptr)
+{
+    // Create binary semaphore (used for encoder A edge notifications)
+    gpioSem = xSemaphoreCreateBinary();
 
-    gpio_init(encoderPinB);
-    gpio_set_dir(encoderPinB, GPIO_IN);
-    gpio_pull_up(encoderPinB);
+    // Create queue for display messages
+    displayQueue = xQueueCreate(10, sizeof(DisplayMsg));
 
-    // Read initial encoder state
-    lastEncoderA = gpio_get(encoderPinA);
-}
+    // Initialize GPIO pins (pull-ups)
+    gpio_init(ENCODER_PIN_A);
+    gpio_set_dir(ENCODER_PIN_A, GPIO_IN);
+    gpio_pull_up(ENCODER_PIN_A);
 
-void DisplaySystem::item(DisplayItemType type, float value) const {
-    DisplayEvent e{};
-    e.type = type;
-    e.value = value;
-    e.boolValue = false;
-    e.timestamp = xTaskGetTickCount();
+    gpio_init(ENCODER_PIN_B);
+    gpio_set_dir(ENCODER_PIN_B, GPIO_IN);
+    gpio_pull_up(ENCODER_PIN_B);
 
-    // Non-blocking send
-    xQueueSend(m_queue, &e, 0);
-}
+    gpio_init(BUTTON_PIN);
+    gpio_set_dir(BUTTON_PIN, GPIO_IN);
+    gpio_pull_up(BUTTON_PIN);
 
-void DisplaySystem::item(DisplayItemType type, bool value) const {
-    DisplayEvent e{};
-    e.type = type;
-    e.value = 0.0f;
-    e.boolValue = value;
-    e.timestamp = xTaskGetTickCount();
+    // attach global pointer for ISR to find this instance
+    s_instance_for_isr = this;
 
-    // Non-blocking send
-    xQueueSend(m_queue, &e, 0);
-}
+    // Configure ISR for both rising and falling edges on ENCODER_PIN_A
+    // The Pico SDK uses one global callback; supply the function below
+    gpio_set_irq_enabled_with_callback(ENCODER_PIN_A, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &HANDLEC02INPUT::gpio_isr);
 
-void DisplaySystem::setFanSpeedCallback(std::function<void(float)> callback) {
-    fanSpeedCallback = callback;
-}
-
-void DisplaySystem::setValveOpenCallback(std::function<void()> callback) {
-    valveOpenCallback = callback;
-}
-
-DisplayEvent DisplaySystem::getEvent() const {
-    DisplayEvent e{};
-    // Non-blocking receive to allow processing input even when no display updates
-    if (xQueueReceive(m_queue, &e, 0) == pdTRUE) {
-        return e;
+    // Prepare initial display message (show '?' meaning unset)
+    if (displayQueue) {
+        DisplayMsg m{};
+        snprintf(m.text, sizeof(m.text), "CO2 set -1?");
+        m.y = 50;
+        xQueueSend(displayQueue, &m, 0);
     }
-    // Return empty event if no data
-    e.type = static_cast<DisplayItemType>(-1); // Invalid type indicates no data
-    return e;
 }
 
-void DisplaySystem::processInput() {
-    // Handle button press
-    bool currentButtonState = gpio_get(buttonPin);
-    absolute_time_t now = get_absolute_time();
+HANDLEC02INPUT::~HANDLEC02INPUT() {
+    // Clean up (optional for embedded long-running)
+    if (gpioSem) vSemaphoreDelete(gpioSem);
+    if (displayQueue) vQueueDelete(displayQueue);
+    s_instance_for_isr = nullptr;
+}
 
-    // Detect button press (active low)
-    if (lastButtonState && !currentButtonState) {
-        // Button pressed, check debounce
-        if (absolute_time_diff_us(lastButtonPress, now) > DEBOUNCE_TIME_US) {
-            // Navigate to next menu
-            switch (currentMenu) {
-                case MENU_SENSORS_1:
-                    currentMenu = MENU_SENSORS_2;
-                    break;
-                case MENU_SENSORS_2:
-                    currentMenu = MENU_VALVE;
-                    break;
-                case MENU_VALVE:
-                    currentMenu = MENU_FAN_SPEED;
-                    break;
-                case MENU_FAN_SPEED:
-                    currentMenu = MENU_SENSORS_1;
-                    break;
+int HANDLEC02INPUT::getDesiredValue() const {
+    return desiredCO2Value; // -1 if unset
+}
+
+// ISR - minimal work: give semaphore from ISR
+void HANDLEC02INPUT::gpio_isr(uint gpio, uint32_t events) {
+    (void) events;
+    if (!s_instance_for_isr) return;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(s_instance_for_isr->gpioSem, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+// Start tasks; pass the shared oled pointer so worker can draw directly.
+// We pass a small params struct via pv to displayWorkerFn.
+void HANDLEC02INPUT::startTasks(const std::shared_ptr<ssd1306os>& oled) {
+    // create a small struct to pass both oled and this pointer to display worker
+    struct Params {
+        std::shared_ptr<ssd1306os> oled;
+        HANDLEC02INPUT* self;
+    };
+
+    auto* p = new Params{oled, this};
+
+    // encoder task: waits on gpioSem then updates value accordingly
+    xTaskCreate(encoderTaskFn, "EncoderTask", 512, this, ENCODER_TASK_PRIO, &encoderTaskHandle);
+
+    // display worker draws messages coming from the internal queue
+    xTaskCreate(displayWorkerFn, "DisplayWorker", 1024, p, DISPLAY_TASK_PRIO, &displayWorkerHandle);
+}
+
+// encoder task implementation
+void HANDLEC02INPUT::encoderTaskFn(void* pv) {
+    auto* self = static_cast<HANDLEC02INPUT*>(pv);
+    // read initial A state for edge detection fallback
+    int lastA = gpio_get(ENCODER_PIN_A);
+
+    for (;;) {
+        // wait until ISR gives semaphore (an edge)
+        if (xSemaphoreTake(self->gpioSem, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            // on each edge, read both pins to determine direction
+            int a = gpio_get(ENCODER_PIN_A);
+            int b = gpio_get(ENCODER_PIN_B);
+
+            // If currently locked, ignore rotations
+            if (!self->locked) {
+                // first movement after unset: initialize mid value
+                if (self->desiredCO2Value < 0) {
+                    self->desiredCO2Value = 400; // choose sensible default
+                }
+//TODO:VALUE TO THE EEPROM AND READ FROM THERE WHEN THE PROGRAM STARTS.
+                // rotate detection: increase/decrease by 10 per event
+                // rotate detection: increase/decrease by 10 per event
+                if (a != lastA) {
+                    // clockwise = increase
+                    if (a == b) self->desiredCO2Value += 10;
+                    else self->desiredCO2Value -= 10;
+
+                    // Since clamp does not take in volatiles.
+                    int tmp = self->desiredCO2Value;
+                    tmp = std::clamp(tmp, 200, 1500);
+                    self->desiredCO2Value = tmp;
+
+                    // publish update to display queue
+                    if (self->displayQueue) {
+                        DisplayMsg m{};
+                        snprintf(m.text, sizeof(m.text), "CO2 set: %d", self->desiredCO2Value);
+                        m.y = 50;
+                        xQueueSend(self->displayQueue, &m, 0);
+                    }
+
+                    lastA = a;
+                }
+                lastA = a;
             }
-            lastButtonPress = now;
-        }
-    }
-    lastButtonState = currentButtonState;
 
-    // Handle encoder
-    int currentEncoderA = gpio_get(encoderPinA);
-    int currentEncoderB = gpio_get(encoderPinB);
+            // Check button for press -> lock the current value
+            // Debounce simple: require button low for a short time
+            if (gpio_get(BUTTON_PIN) == 0) {
+                // simple debounce
+                vTaskDelay(pdMS_TO_TICKS(20));
+                if (gpio_get(BUTTON_PIN) == 0) {
+                    // lock
+                    self->locked = true;
+                    self->lockTick = xTaskGetTickCount();
+                    self->lockedValue = self->desiredCO2Value;
 
-    // Check for encoder rotation
-    if (currentEncoderA != lastEncoderA) {
-        int direction = (currentEncoderA == currentEncoderB) ? 1 : -1;
-
-        switch (currentMenu) {
-            case MENU_VALVE:
-                // Encoder rotation opens valve
-                if (valveOpenCallback) {
-                    valveOpenCallback();
+                    if (self->displayQueue) {
+                        DisplayMsg m{};
+                        snprintf(m.text, sizeof(m.text), "CO2 locked: %d ppm", self->lockedValue);
+                        m.y = 50;
+                        xQueueSend(self->displayQueue, &m, 0);
+                    }
+                    // wait until button release
+                    while (gpio_get(BUTTON_PIN) == 0) vTaskDelay(pdMS_TO_TICKS(10));
                 }
-                break;
+            }
+        } else {
+            // timeout: every 1000 ms we still check for lock expiry and revert logic
 
-            case MENU_FAN_SPEED:
-                // Encoder adjusts fan speed
-                fanSpeed += direction * 5.0f; // 5% increments
-                if (fanSpeed < 0.0f) fanSpeed = 0.0f;
-                if (fanSpeed > 100.0f) fanSpeed = 100.0f;
-
-                if (fanSpeedCallback) {
-                    fanSpeedCallback(fanSpeed);
+            // unlock after LOCK_TIME
+            if (self->locked) {
+                if ((xTaskGetTickCount() - self->lockTick) >= LOCK_TIME) {
+                    self->locked = false;
+                    // send message that lock expired
+                    if (self->displayQueue) {
+                        DisplayMsg m{};
+                        snprintf(m.text, sizeof(m.text), "CO2 unlock: %d ppm", self->desiredCO2Value >= 0 ? self->desiredCO2Value : -1);
+                        m.y = 50;
+                        xQueueSend(self->displayQueue, &m, 0);
+                    }
                 }
-                break;
-
-            default:
-                // No encoder action for sensor display menus
-                break;
-        }
-
-        lastEncoderA = currentEncoderA;
-    }
-}
-
-void DisplaySystem::updateDisplay() {
-    // Process any pending display events
-    DisplayEvent e = getEvent(); // Linker complained this was missing.
-    if (static_cast<int>(e.type) != -1) {
-        // Valid event
-        switch (e.type) {
-            case DisplayItemType::CO2:
-                co2Value = e.value;
-                break;
-            case DisplayItemType::HUMIDITY:
-                humidityValue = e.value;
-                break;
-            case DisplayItemType::TEMPERATURE:
-                temperatureValue = e.value;
-                break;
-            case DisplayItemType::PRESSURE:
-                pressureValue = e.value;
-                break;
-            case DisplayItemType::FAN_STATUS:
-                fanRunningValue = e.boolValue;
-                break;
+            } else {
+                // revert behavior: if user rotated but didn't press for REVERT_DELAY, revert to lockedValue
+                if (self->lastChangeTick != 0 && (xTaskGetTickCount() - self->lastChangeTick) >= REVERT_DELAY) {
+                    // If there is a lockedValue defined, revert
+                    if (self->lockedValue >= 0 && self->desiredCO2Value != self->lockedValue) {
+                        self->desiredCO2Value = self->lockedValue;
+                        if (self->displayQueue) {
+                            DisplayMsg m{};
+                            snprintf(m.text, sizeof(m.text), "CO2 revert: %d ppm", self->desiredCO2Value);
+                            m.y = 50;
+                            xQueueSend(self->displayQueue, &m, 0);
+                        }
+                    }
+                    // clear lastChangeTick so we don't repeatedly send reverts
+                    self->lastChangeTick = 0;
+                }
+            }
         }
     }
-
-    // Update screen
-    screen->fill(0);
-
-    char line1[32];
-    char line2[32];
-    char line3[32];
-    char line4[32];
-
-    switch (currentMenu) {
-        case MENU_SENSORS_1:
-            snprintf(line1, sizeof(line1), "SENSORS 1/4");
-            snprintf(line2, sizeof(line2), "CO2: %.1f ppm", co2Value);
-            snprintf(line3, sizeof(line3), "Humidity: %.1f%%", humidityValue);
-            snprintf(line4, sizeof(line4), "Press btn: Next");
-            break;
-
-        case MENU_SENSORS_2:
-            snprintf(line1, sizeof(line1), "SENSORS 2/4");
-            snprintf(line2, sizeof(line2), "Temp: %.1fC", temperatureValue);
-            snprintf(line3, sizeof(line3), "Press: %.1f Pa", pressureValue);
-            snprintf(line4, sizeof(line4), "Press btn: Next");
-            break;
-
-        case MENU_VALVE:
-            snprintf(line1, sizeof(line1), "VALVE CTRL 3/4");
-            snprintf(line2, sizeof(line2), "Rotate encoder");
-            snprintf(line3, sizeof(line3), "to open valve");
-            snprintf(line4, sizeof(line4), "Press btn: Next");
-            break;
-
-        case MENU_FAN_SPEED:
-            snprintf(line1, sizeof(line1), "FAN SPEED 4/4");
-            snprintf(line2, sizeof(line2), "Speed: %.0f%%", fanSpeed);
-            snprintf(line3, sizeof(line3), "Status: %s", fanRunningValue ? "ON" : "OFF");
-            snprintf(line4, sizeof(line4), "Rotate: Adjust");
-            break;
-    }
-
-    screen->text(line1, 0, 0);
-    screen->text(line2, 0, 12);
-    screen->text(line3, 0, 24);
-    screen->text(line4, 0, 50);
-
-    screen->show();}
-
-DisplayTask::DisplayTask(std::shared_ptr<DisplaySystem> displaySystem)
-    : m_displaySystem(std::move(displaySystem)) {
-    constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
-    xTaskCreate(displayTaskFunc, "DisplayTask", 2048, this, TASK_LOW_PRIORITY, nullptr);
 }
 
-[[noreturn]] void DisplayTask::run() const {
-    while (true) {
-        m_displaySystem->processInput(); // Linker complained this was missing.
-        m_displaySystem->updateDisplay();
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-}
+// display worker: consumes displayQueue and draws to OLED
+void HANDLEC02INPUT::displayWorkerFn(void* pv) {
+    // pv is a small heap-alloc Params struct allocated in startTasks
+    struct Params {
+        std::shared_ptr<ssd1306os> oled;
+        HANDLEC02INPUT* self;
+    };
 
-void displayTaskFunc(void *pvParameters) {
-    auto task = static_cast<DisplayTask *>(pvParameters);
-    task->run();
+    auto* p = static_cast<Params*>(pv);
+    auto oled = p->oled;
+    auto* self = p->self;
+
+    // local buffer for dequeue
+    DisplayMsg msg;
+
+    for (;;) {
+        // wait indefinitely for messages
+        if (xQueueReceive(self->displayQueue, &msg, portMAX_DELAY) == pdTRUE) {
+            // draw the message; we assume other tasks draw other rows
+            // lock I2C if your system needs it — here we assume oled->text/show are thread-safe or protected externally
+            oled->fill(0);
+            oled->text(msg.text, 0, msg.y);
+            oled->show();
+        }
+    }
+
+    // never reached, but if we ever exit
+    delete p;
 }

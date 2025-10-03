@@ -45,6 +45,9 @@ add_executable(${ProjectName}
         debug.cpp
         relayController.cpp
         displayMenu.cpp
+#        controller.cpp
+#        encoderHandler.cpp
+#        displayHandler.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE
