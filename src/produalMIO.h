@@ -2,13 +2,11 @@
 #define PRODUAL_MIO
 
 #include <memory>
-
 #include "gmp252.h"
+#include "rotaryEncoder.h"
 #include "ModbusClient.h"
 #include "mutexGuard.h"
-#include "ssd1306os.h"
 #include "relayController.h"
-
 
 // Register addresses (zero-based offsets for Modbus functions)
 static constexpr uint16_t REG_AO1 = 0;   // Holding register 40001 → AO1 fan speed
@@ -16,11 +14,9 @@ static constexpr uint16_t REG_FAN_PULSE_COUNT = 0; // Input register 30001 → f
 
 class ModbusMIO {
 public:
-    ModbusMIO(std::shared_ptr<ModbusClient> modbus,
-              SemaphoreHandle_t mutex,
-              std::shared_ptr<ssd1306os> display);
+    ModbusMIO(std::shared_ptr<ModbusClient> modbus, SemaphoreHandle_t mutex);
 
-    void controlLoop(const GMP252& sensor, int desiredValue);
+    void controlLoop(const GMP252& sensor, const RotaryEncoder& rotaryEncoder);
 
     [[nodiscard]] bool setFanSpeed(float percent) const;
     [[nodiscard]] bool isFanRunning() const;
@@ -28,13 +24,12 @@ public:
 
 private:
     void handleValveLogic(int co2Lvl, int desiredCo2Lvl);
-    void updateDisplay(int co2Lvl, int desiredCo2Lvl);
 
     std::shared_ptr<ModbusClient> modbus;
-    std::shared_ptr<ssd1306os> display;
-    RELAYCONTROL valve;   // internally managed
+    RELAYCONTROL valve;
     uint8_t slaveAddress;
     SemaphoreHandle_t busMutex;
+    RotaryEncoder encoder;
 };
 
 #endif

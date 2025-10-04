@@ -10,10 +10,10 @@ public:
     RELAYCONTROL();
     void openValve();
     void closeValve();
+    [[nodiscard]] bool valveStatus() const;
 
 private:
     bool valveState;
-    absolute_time_t lastOpenTime;
 };
 
 #endif
