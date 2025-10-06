@@ -1,4 +1,3 @@
-// EncoderHandler.cpp
 #include "encoderHandler.h"
 
 EncoderHandler::EncoderHandler(const uint pinA, const uint pinB)

@@ -24,49 +24,85 @@ extern "C" {
         return time_us_32();
     }
 }
+//
+// // Global resources
+// const SemaphoreHandle_t modbusMutex = xSemaphoreCreateMutex();
+// auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
+// auto modbusClient = std::make_shared<ModbusClient>(uart);
+// EventGroupHandle_t eventGroup;
+//
+// // Sensors / actuators
+// GMP252 gmpSensor(modbusClient, modbusMutex);
+// HMP60 hmpSensor(modbusClient, modbusMutex);
+// ModbusMIO modbusSystem(modbusClient, modbusMutex);
+// RotaryEncoder encoder;
+// RELAYCONTROL valve;
+//
+//
+// // Display manager
+// DisplayParams displayParams{
+//     &gmpSensor,
+//     &hmpSensor,
+//     &modbusSystem,
+//     &encoder,
+//     &valve
+// };
+//
+// DisplayManager displayManager(displayParams);
 
-// Global resources
-const SemaphoreHandle_t modbusMutex = xSemaphoreCreateMutex();
-auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
-auto modbusClient = std::make_shared<ModbusClient>(uart);
-EventGroupHandle_t eventGroup;
 
-// Sensors / actuators
-GMP252 gmpSensor(modbusClient, modbusMutex);
-HMP60 hmpSensor(modbusClient, modbusMutex);
+// --- Global Resources ---
+SemaphoreHandle_t modbusMutex;
+std::shared_ptr<PicoOsUart> uart;
+std::shared_ptr<ModbusClient> modbusClient;
+
+// CHANGE: Use pointers for Modbus-dependent and I2C-dependent objects
+GMP252* gmpSensor = nullptr;
+HMP60* hmpSensor = nullptr;
+ModbusMIO* modbusSystem = nullptr;
+RotaryEncoder* encoder = nullptr; // RotaryEncoder uses I2C for EEPROM
+
+// KEEP: RELAYCONTROL doesn't seem to have complex dependencies
 RELAYCONTROL valve;
-ModbusMIO modbusSystem(modbusClient, modbusMutex);
-RotaryEncoder encoder;
-
-// I2C & OLED
-auto i2cBus = std::make_shared<PicoI2C>(1, 400000);
-auto oledShared = std::make_shared<ssd1306os>(i2cBus);
-
-// Display manager
-DisplayParams displayParams{
-    i2cBus,
-    oledShared,
-    &gmpSensor,
-    &hmpSensor,
-    &modbusSystem,
-    &encoder,
-    &valve
-};
-DisplayManager displayManager(displayParams);
-
 // --- Tasks ---
 [[noreturn]] void displayTask(void *pvParameters) {
     static_cast<DisplayManager*>(pvParameters)->displayTask();
 }
 
-[[noreturn]] void modbusControlTask(void *pvParameters) {
-    const auto *debug = static_cast<Debug*>(pvParameters);
+// [[noreturn]] void modbusControlTask(void *pvParameters) {
+//     const auto *debug = static_cast<Debug*>(pvParameters);
+//
+//     while (true) {
+//         const int desiredCO2 = encoder.currentRotationValue();
+//         const int currentCO2 = static_cast<int>(gmpSensor.readMeasuredCO2());
+//
+//         modbusSystem.controlLoop(gmpSensor, encoder);
+//
+//         char buf[128];
+//         snprintf(buf, sizeof(buf), "CO2=%d ppm, Desired=%d ppm\n", currentCO2, desiredCO2);
+//         debug->print(buf);
+//
+//         vTaskDelay(pdMS_TO_TICKS(1000));
+//     }
+// }
+// --- Modbus Control Task ---
+[[noreturn]] void modbusControlTask(void* pvParameters) {
+    const auto* debug = static_cast<Debug*>(pvParameters);
+
+    // extern declarations are no longer strictly needed if defined globally
+    // extern GMP252 gmpSensor; // DELETE
+    // extern RotaryEncoder encoder; // DELETE
+    // extern ModbusMIO modbusSystem; // DELETE
+    extern GMP252* gmpSensor; // USE POINTER
+    extern RotaryEncoder* encoder; // USE POINTER
+    extern ModbusMIO* modbusSystem; // USE POINTER
 
     while (true) {
-        const int desiredCO2 = encoder.currentRotationValue();
-        const int currentCO2 = static_cast<int>(gmpSensor.readMeasuredCO2());
+        // Use -> to access members
+        const int desiredCO2 = encoder->currentRotationValue();
+        const int currentCO2 = static_cast<int>(gmpSensor->readMeasuredCO2());
 
-        modbusSystem.controlLoop(gmpSensor, encoder);
+        modbusSystem->controlLoop(*gmpSensor, *encoder); // Pass dereferenced objects
 
         char buf[128];
         snprintf(buf, sizeof(buf), "CO2=%d ppm, Desired=%d ppm\n", currentCO2, desiredCO2);
@@ -75,22 +111,54 @@ DisplayManager displayManager(displayParams);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-
+// --- Main ---
 // --- Main ---
 int main() {
     stdio_init_all();
-    // Debug (turn on the DTR to see debug)
-    auto debug{std::make_shared<Debug>()};
-    auto debugTask{std::make_unique<DebugTask>(debug)};
-    oledShared->fill(0);
+    printf("1 - System Init Start\n");
+
+    // 1. Initialize I2C Bus (Dependency for RotaryEncoder/EEPROM and DisplayManager)
+    // Move this initialization from DisplayManager constructor to here.
+    i2c_init(i2c1, 400000);
+    gpio_set_function(14, GPIO_FUNC_I2C);
+    gpio_set_function(15, GPIO_FUNC_I2C);
+    gpio_pull_up(14);
+    gpio_pull_up(15);
+    printf("2 - I2C Initialized\n");
+
+    // 2. Initialize Modbus Dependencies
+    modbusMutex = xSemaphoreCreateMutex();
+    uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
+    modbusClient = std::make_shared<ModbusClient>(uart);
+    printf("3 - Modbus Client Initialized\n");
+
+    // 3. Initialize Dependent Objects *after* all dependencies are ready
+    // Remove placement new attempts
+    gmpSensor = new GMP252(modbusClient, modbusMutex);
+    hmpSensor = new HMP60(modbusClient, modbusMutex);
+    modbusSystem = new ModbusMIO(modbusClient, modbusMutex);
+    encoder = new RotaryEncoder(); // This now runs after I2C is ready (rotaryEncoder.cpp)
+
+    printf("4 - Hardware Objects Constructed\n");
+
+    // 4. Display setup - Use the pointers
+    DisplayParams displayParams{gmpSensor, hmpSensor, modbusSystem, encoder, &valve};
+    DisplayManager displayManager;
+    displayManager.setParams(&displayParams);
+
+    // ... Debug setup ...
+    auto debug = std::make_shared<Debug>();
+    auto debugTask = std::make_unique<DebugTask>(debug);
     debug->print("Program started.\n");
+    printf("5 - Debug and Display Ready\n");
 
+    // 5. Create tasks *after* all objects are initialized
+    xTaskCreate(RotaryEncoder::encoderTask, "EncoderPoll", 512, encoder, tskIDLE_PRIORITY + 2, nullptr); // NEW TASK
+    xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048, &displayManager, tskIDLE_PRIORITY + 2, nullptr);
+    xTaskCreate(modbusControlTask, "ControlTask", 2048, debug.get(), tskIDLE_PRIORITY + 3, nullptr);
+    printf("6 - Tasks Created, Starting Scheduler...\n");
 
-    // FreeRTOS tasks
-    xTaskCreate(displayTask, "DisplayTask", 2048, &displayManager, tskIDLE_PRIORITY + 2, nullptr);
-    xTaskCreate(modbusControlTask, "ControlTask", 1024, debug.get(), tskIDLE_PRIORITY + 3, nullptr);
-
+    // Start scheduler
     vTaskStartScheduler();
-
-    while(true) {} // Should never reach
+    // ...
 }

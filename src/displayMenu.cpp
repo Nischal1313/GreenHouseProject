@@ -1,49 +1,56 @@
 #include "displayMenu.h"
+#include <cstdio>
 
-DisplayManager::DisplayManager(const DisplayParams& params)
-    : i2cBus(params.i2cBus),
-      oled(params.oled),
-      gmpSensor(params.gmpSensor),
-      hmpSensor(params.hmpSensor),
-      modbusSystem(params.modbusSystem),
-      encoder(params.encoder),
-      valve(params.valve) {}
+DisplayManager::DisplayManager()
+    : i2cBus(std::make_shared<PicoI2C>(1, 400000)),
+      oLed(std::make_shared<ssd1306os>(i2cBus)),
+      params(nullptr)
+{}
+
+void DisplayManager::setParams(DisplayParams* displayParams) {
+    this->params = displayParams;
+}
+
+void DisplayManager::taskEntry(void* pvParameters) {
+    auto* self = static_cast<DisplayManager*>(pvParameters);
+    self->displayTask(); // Run the member task loop
+}
 
 [[noreturn]] void DisplayManager::displayTask() const {
     char buf[128];
 
     while (true) {
-        oled->fill(0);
+        oLed->fill(0);
 
-        const float co2 = gmpSensor->readMeasuredCO2();
-        const float hum = hmpSensor->readHumidity();
-        const float temp = hmpSensor->readTemperature();
+        // Read all values via getters
+        const float co2 = params->gmpSensor->readMeasuredCO2();
+        const float temp = params->hmpSensor->readTemperature();
+        const float hum = params->hmpSensor->readHumidity();
+        const int desiredCO2 = params->encoder->currentRotationValue();
+        const bool fanRunning = params->modbusSystem->isFanRunning();
+        const float fanSpeed = params->modbusSystem->readFanSpeed();
+        const bool valveState = params->valve->valveStatus();
 
-        const int desiredCO2 = encoder->currentRotationValue();
-        const float fanSpeed = modbusSystem->readFanSpeed();
-        const bool fanRunning = modbusSystem->isFanRunning();
-        const bool valveState = valve->valveStatus();
+        snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
+        oLed->text(buf, 2, 5);
 
-        snprintf(buf, sizeof(buf), "CO2: %.1f ppm", co2);
-        oled->text(buf, 5, 5);
+        snprintf(buf, sizeof(buf), "Set: %d ppm", desiredCO2);
+        oLed->text(buf, 2, 15);
 
-        snprintf(buf, sizeof(buf), "Desired: %d ppm", desiredCO2);
-        oled->text(buf, 5, 15);
-
-        snprintf(buf, sizeof(buf), "Temp: %.1f Hum: %.1f %%", temp, hum);
-        oled->text(buf, 5, 25);
+        snprintf(buf, sizeof(buf), "Temp: %.1fC  Humid: %.1f%%", temp, hum);
+        oLed->text(buf, 2, 25);
 
         snprintf(buf, sizeof(buf), "Fan: %s", fanRunning ? "ON" : "OFF");
-        oled->text(buf, 5, 35);
+        oLed->text(buf, 2, 35);
 
         snprintf(buf, sizeof(buf), "Speed: %.0f%%", fanSpeed);
-        oled->text(buf, 5, 45);
+        oLed->text(buf, 2, 45);
 
-        snprintf(buf, sizeof(buf), "Valve: %s", valveState ? "ON" : "OFF");
-        oled->text(buf, 5, 55);
+        snprintf(buf, sizeof(buf), "Valve: %s", valveState ? "OPEN" : "CLOSED");
+        oLed->text(buf, 2, 55);
 
-        oled->show();
+        oLed->show();
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(1000)); // update every second
     }
 }

@@ -48,6 +48,8 @@ add_executable(${ProjectName}
 #        controller.cpp
 #        encoderHandler.cpp
 #        displayHandler.cpp
+        rotaryEncoder.cpp
+        eeprom.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE

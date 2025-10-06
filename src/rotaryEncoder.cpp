@@ -4,8 +4,7 @@
 RotaryEncoder::RotaryEncoder()
     : desiredCO2(500),
       lastA(0), lastB(0),
-      eeprom(i2c1, EEPROM_ADDR),
-      encoderTaskHandle(nullptr)
+      eeprom(i2c1, EEPROM_ADDR)
 {
     gpio_init(PIN_A);
     gpio_init(PIN_B);
@@ -17,8 +16,6 @@ RotaryEncoder::RotaryEncoder()
     readFromEEPROM();
     lastA = gpio_get(PIN_A);
     lastB = gpio_get(PIN_B);
-
-    xTaskCreate(encoderTask, "EncoderPoll", 512, this, tskIDLE_PRIORITY + 2, &encoderTaskHandle);
 }
 
 int RotaryEncoder::currentRotationValue() const {
@@ -35,12 +32,12 @@ void RotaryEncoder::readFromEEPROM() {
     }
 }
 
-void RotaryEncoder::writeToEEPROM() {
+void RotaryEncoder::writeToEEPROM() const {
     uint8_t buf[2] = {
         static_cast<uint8_t>(desiredCO2 >> 8),
         static_cast<uint8_t>(desiredCO2 & 0xFF)
     };
-    eeprom.writeBlock(EEPROM_CO2_ADDR, buf, 2);
+    Eeprom::writeBlock(EEPROM_CO2_ADDR, buf, 2);
 }
 
 void RotaryEncoder::encoderTask(void* pv) {

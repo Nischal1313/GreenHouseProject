@@ -11,6 +11,7 @@ class RotaryEncoder {
 public:
     RotaryEncoder();
     int currentRotationValue() const;
+    static void encoderTask(void* pv);
 
 private:
     static constexpr uint8_t PIN_A = 10;
@@ -24,8 +25,7 @@ private:
     TaskHandle_t encoderTaskHandle;
 
     void readFromEEPROM();
-    void writeToEEPROM();
-    static void encoderTask(void* pv);
+    void writeToEEPROM() const;
 };
 
 #endif
