@@ -43,6 +43,15 @@ constexpr int BUTTON2_PIN = 8;
 constexpr int BUTTON3_PIN = 9;
 constexpr uint LED_PIN = 22;
 
+
+//---------------------------------------------------
+// Network constants
+//---------------------------------------------------
+//Define during demo or testing
+constexpr char SSID[] = "Pixel,";
+constexpr char PASSWORD[] = "10203044";
+constexpr int BUFSIZE = 2048;
+
 //---------------------------------------------------
 // Event group bits
 //---------------------------------------------------
@@ -50,6 +59,7 @@ constexpr EventBits_t BIT_TASK_FAN = (1 << 0);
 constexpr EventBits_t BIT_TASK_GMP = (1 << 1);
 constexpr EventBits_t BIT_TASK_HMP = (1 << 2);
 constexpr EventBits_t BIT_TASK_SDP = (1 << 3);
+constexpr EventBits_t BIT_TASK_CLD = (1 << 4);
 constexpr EventBits_t ALL_TASK_BITS = BIT_TASK_FAN | BIT_TASK_GMP | BIT_TASK_HMP | BIT_TASK_SDP;
 
 //---------------------------------------------------
@@ -162,7 +172,7 @@ void initFunction() {
 
     // Initialize sensor once
     if (!pressureSensor->init()) {
-        debug("Failed to initialize SDP610 pressure sensor\n");
+        //debug("Failed to initialize SDP610 pressure sensor\n");
     }
 }
 
@@ -188,15 +198,16 @@ void initFunction() {
             char buf[128];
             snprintf(buf, sizeof(buf), "Watchdog: OK, %lu ms since last OK\n",
                      static_cast<unsigned long>((now - lastOK) * portTICK_PERIOD_MS));
-            debug(buf);
+            //debug(buf);
             lastOK = now;
         } else {
             EventBits_t missingBits = ALL_TASK_BITS & ~result;
-            debug("Watchdog FAIL! Missing tasks: -> ");
+            //debug("Watchdog FAIL! Missing tasks: -> ");
             if (missingBits & BIT_TASK_FAN) debug("  Fan control task\n");
             if (missingBits & BIT_TASK_GMP) debug("  GMP252 CO2 sensor task\n");
             if (missingBits & BIT_TASK_HMP) debug("  HMP60 humidity/temp task\n");
             if (missingBits & BIT_TASK_SDP) debug("  SDP610 pressure sensor task\n");
+            if (missingBits & BIT_TASK_CLD) debug("  Cloud task\n");
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
@@ -225,8 +236,8 @@ void initFunction() {
             snprintf(buf, sizeof(buf), "Fan is running.\n");
             debug(buf);
         } else {
-            snprintf(buf, sizeof(buf), "Failed to set speed.\n");
-            debug(buf);
+            //snprintf(buf, sizeof(buf), "Failed to set speed.\n");
+            //debug(buf);
         }
 
         xEventGroupSetBits(eventGroup, BIT_TASK_FAN);
@@ -250,7 +261,7 @@ void initFunction() {
             snprintf(buf, sizeof(buf),
                      "GMP252 - CO2: %.1f ppm\n", co2);
             debug(buf);
-        } else debug("GMP252 sensor read failed!\n");
+        } else //debug("GMP252 sensor read failed!\n");
 
         xEventGroupSetBits(eventGroup, BIT_TASK_GMP);
         vTaskDelay(taskDelay);
@@ -274,7 +285,7 @@ void initFunction() {
             char buf[128];
             snprintf(buf, sizeof(buf), "HMP60 - Humidity: %.1f%%, Temperature: %.1fC\n", hum, temp);
             debug(buf);
-        } else debug("HMP60 sensor read failed!\n");
+        } else //debug("HMP60 sensor read failed!\n");
 
         xEventGroupSetBits(eventGroup, BIT_TASK_HMP);
         vTaskDelay(taskDelay);
@@ -293,7 +304,7 @@ void initFunction() {
             snprintf(buf, sizeof(buf), "SDP610 - Pressure: %.2f Pa\n", pressure);
             debug(buf);
         } else {
-            debug("SDP610 pressure sensor read failed!\n");
+            //debug("SDP610 pressure sensor read failed!\n");
         }
 
         xEventGroupSetBits(eventGroup, BIT_TASK_SDP);
@@ -303,31 +314,58 @@ void initFunction() {
 
 [[noreturn]] void Cloudtask(void *pvParameters) {
     auto *res = (SharedResources *) pvParameters;
+    bool set_network_up = false;
+    bool transmitting = false;
+    unsigned char *buffer = new unsigned char[BUFSIZE];
 
     CloudClass cloud(std::shared_ptr<SharedResources>(res, [](SharedResources*){}));
-    cloud.connect();
-
     while (true) {
         // Blink LED to show task is alive
         gpio_put(LED_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(100));
         gpio_put(LED_PIN, 0);
         vTaskDelay(pdMS_TO_TICKS(100));
-
-        if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            int co2  = (int)res->co2_ppm;
-            int hum  = (int)res->humidity;
-            int temp = (int)res->temperature;
-            int fan  = (int)res->fan_speed;
-            int sp   = (int)res->co2_setpoint;
-            xSemaphoreGive(res->mutex);
-
-            cloud.sendAndreceive(co2, temp, hum, fan, sp);
-        } else {
-            debug("Cloudtask: Failed to acquire mutex for shared resources\n");
+        EventBits_t uxBits = xEventGroupGetBits(eventGroup);
+        if (!(res->credentials_entered)) {
+            if (xSemaphoreTake(buttonMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                cloud.setCredentials(SSID,PASSWORD);
+                set_network_up = true;
+                res->credentials_entered = true;
+                xSemaphoreGive(buttonMutex);
+            } else {
+                debug("Cloudtask: Failed to acquire mutex for button\n");
+            }
         }
-
-        vTaskDelay(pdMS_TO_TICKS(10000)); // Wait before checking again
+        if (set_network_up) {
+            cloud.connect();
+            transmitting = true;
+            set_network_up = false;
+        }
+        if (transmitting) {
+            cloud.sendAndreceive(sharedResources->co2_ppm, sharedResources->temperature, sharedResources->humidity, sharedResources->fan_speed, sharedResources->co2_setpoint);
+            if (cloud.Co2_SetPoint != sharedResources->co2_setpoint) {
+                if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                    res->co2_setpoint = cloud.Co2_SetPoint;
+                    xSemaphoreGive(res->mutex);
+                } else {
+                    debug("Cloudtask: Failed to acquire mutex for shared resources\n");
+                }
+            }
+        }
+        // if (xSemaphoreTake(res->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        //     int co2  = (int)res->co2_ppm;
+        //     int hum  = (int)res->humidity;
+        //     int temp = (int)res->temperature;
+        //     int fan  = (int)res->fan_speed;
+        //     int sp   = (int)res->co2_setpoint;
+        //     xSemaphoreGive(res->mutex);
+        //
+        //     cloud.sendAndreceive(co2, temp, hum, fan, sp);
+        // } else {
+        //     debug("Cloudtask: Failed to acquire mutex for shared resources\n");
+        // }
+        //xEventGroupSetBits(eventGroup, BIT_TASK_SDP);
+        vTaskDelay(10); // Wait before checking again
     }
 }
 

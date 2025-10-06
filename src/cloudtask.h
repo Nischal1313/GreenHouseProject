@@ -33,7 +33,7 @@ public:
     CloudClass(const std::shared_ptr<SharedResources>& sharedResources );
     void init();
     void connect();
-    void recieve(int Co2_SetPoint);
+    void recieve();
     void send(int co2, int tem, int rh, int fanSpeed, int Co2_SetPoint);
     void sendAndreceive(int co2, int tem, int rh, int fanSpeed, int Co2_SetPoint);
     void setCredentials(const char* ssid, const char* password);

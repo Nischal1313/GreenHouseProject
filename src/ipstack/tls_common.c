@@ -27,6 +27,28 @@ typedef struct TLS_CLIENT_T_ {
 
 static struct altcp_tls_config *tls_config = NULL;
 
+char tls_client_response[2048]; // global buffer to hold HTTP response
+
+static int Co2_SetPoint = 0;
+
+int get_co2_setpoint() {
+    const char *cmd_start = strstr(tls_client_response, "\"command_string\":\"");
+    if (cmd_start) {
+        cmd_start += strlen("\"command_string\":\"");
+        char cmd[64];
+        int i = 0;
+        while (*cmd_start && *cmd_start != '"' && i < 63) {
+            cmd[i++] = *cmd_start++;
+        }
+        cmd[i] = '\0';
+        printf("Received TalkBack command: %s\n", cmd);
+
+        if (strncmp(cmd, "SETPOINT=", 9) == 0) {
+            return atoi(cmd + 9);
+        }
+    }
+    return Co2_SetPoint;
+}
 
 static err_t tls_client_close(void *arg) {
     TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
@@ -93,12 +115,14 @@ static err_t tls_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, e
            Do be aware that the amount of data can potentially be a bit large (TLS record size can be 16 KB),
            so you may want to use a smaller fixed size buffer and copy the data to it using a loop, if memory is a concern */
         //char buf[p->tot_len + 1];
+        size_t copy_len = MIN(p->tot_len, sizeof(tls_client_response) - 1);
         char *buf= (char *) malloc(p->tot_len + 1);
 
         pbuf_copy_partial(p, buf, p->tot_len, 0);
         buf[p->tot_len] = 0;
 
         printf("***\nnew data received from server:\n***\n\n%s\n", buf);
+        strncat(tls_client_response, buf, sizeof(tls_client_response) - strlen(tls_client_response) - 1); // Append to global response buffer
         free(buf);
 
         altcp_recved(pcb, p->tot_len);
@@ -198,6 +222,8 @@ static void tlsdebug(void *ctx, int level, const char *file, int line, const cha
 }
 
 bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *server, const char *request, int timeout) {
+
+    memset(tls_client_response, 0, sizeof(tls_client_response));  // Clear previous response
 
     //mbedtls_debug_set_threshold(4); // requires #define MBEDTLS_DEBUG_C in mbedtls_xonfig.h
 

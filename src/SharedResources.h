@@ -11,6 +11,7 @@ struct SharedResources {
     float temperature;
     float fan_speed;
     float co2_setpoint;
+    bool credentials_entered = false;
 
     SemaphoreHandle_t mutex;
 };
