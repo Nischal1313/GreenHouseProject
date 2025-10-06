@@ -68,9 +68,38 @@ bool Eeprom::readBlock(const int addr, uint8_t *buffer, const size_t length) con
     return (i2c_read_blocking(i2cPort, eepromAddr, buffer, length, false) == (int)length);
 }
 
+
 bool Eeprom::writeBlock(int addr, const uint8_t *buffer, size_t length) {
-    // NOTE: EEPROMs usually have page size limits (e.g. 64 bytes per write).
-    // This function should split writes into page-sized chunks.
-    // For now, this is left as an exercise :)
-    return false;
+    // We assume the caller (RotaryEncoder) is only writing 2 bytes (CO2 value),
+    // which fits within a single page write.
+
+    // Calculate the necessary buffer size: 2 address bytes + data length
+    const size_t i2c_buffer_size = addressWidth + length;
+    uint8_t i2c_buffer[4]; // Max size is 2 (addr) + 2 (data) = 4
+
+    if (i2c_buffer_size > sizeof(i2c_buffer)) {
+        // Data length exceeds the safe internal buffer size
+        return false;
+    }
+
+    // 1. Build the address bytes at the start of the temporary I2C buffer
+    buildAddressBytes(addr, i2c_buffer);
+
+    // 2. Copy the data block after the address
+    for (size_t i = 0; i < length; ++i) {
+        i2c_buffer[addressWidth + i] = buffer[i];
+    }
+
+    // 3. Write address and data in one go
+    int written = i2c_write_blocking(i2cPort, eepromAddr, i2c_buffer, i2c_buffer_size, false);
+
+    if (written != (int)i2c_buffer_size) {
+        return false; // Write failed
+    }
+
+    // Wait for the EEPROM write cycle to complete (typically 5ms for 24LCxx series)
+    // This is the simplest way to ensure the write operation finishes.
+    sleep_ms(5);
+
+    return true; // Write succeeded
 }

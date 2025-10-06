@@ -62,8 +62,6 @@ HMP60* hmpSensor = nullptr;
 ModbusMIO* modbusSystem = nullptr;
 RotaryEncoder* encoder = nullptr; // RotaryEncoder uses I2C for EEPROM
 
-// KEEP: RELAYCONTROL doesn't seem to have complex dependencies
-RELAYCONTROL valve;
 // --- Tasks ---
 [[noreturn]] void displayTask(void *pvParameters) {
     static_cast<DisplayManager*>(pvParameters)->displayTask();
@@ -138,11 +136,10 @@ int main() {
     hmpSensor = new HMP60(modbusClient, modbusMutex);
     modbusSystem = new ModbusMIO(modbusClient, modbusMutex);
     encoder = new RotaryEncoder(); // This now runs after I2C is ready (rotaryEncoder.cpp)
-
     printf("4 - Hardware Objects Constructed\n");
 
     // 4. Display setup - Use the pointers
-    DisplayParams displayParams{gmpSensor, hmpSensor, modbusSystem, encoder, &valve};
+    DisplayParams displayParams{gmpSensor, hmpSensor, modbusSystem, encoder};
     DisplayManager displayManager;
     displayManager.setParams(&displayParams);
 

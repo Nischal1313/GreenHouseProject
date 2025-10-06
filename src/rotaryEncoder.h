@@ -22,10 +22,9 @@ private:
     int desiredCO2;
     int lastA, lastB;
     Eeprom eeprom;
-    TaskHandle_t encoderTaskHandle;
 
     void readFromEEPROM();
-    void writeToEEPROM() const;
+    void writeToEEPROM();
 };
 
 #endif

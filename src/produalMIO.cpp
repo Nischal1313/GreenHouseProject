@@ -20,7 +20,7 @@ void ModbusMIO::handleValveLogic(const int co2Lvl,const int desiredCo2Lvl) {
     const int diff = desiredCo2Lvl - co2Lvl;
 
     // Within ±20 ppm → idle
-    if (std::abs(diff) <= 20) {
+    if (std::abs(diff) <= 15) {
         setFanSpeed(0.0f);
         valve.closeValve();
         return;
@@ -28,7 +28,9 @@ void ModbusMIO::handleValveLogic(const int co2Lvl,const int desiredCo2Lvl) {
     if (diff > 0) {
         const int valveTimeMs = (diff >= 500) ? 1000
                         : (diff >= 250) ? 500
-                        : 150;
+                        : (diff >= 100) ? 200
+                        : (diff >= 50) ? 100
+                        : 50;
 
         valve.openValve();
         setFanSpeed(0.0f);

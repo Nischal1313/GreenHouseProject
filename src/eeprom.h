@@ -42,7 +42,7 @@ public:
     /**
      * @brief Write multiple bytes from a buffer.
      */
-    static bool writeBlock(int addr, const uint8_t *buffer, size_t length);
+    bool writeBlock(int addr, const uint8_t *buffer, size_t length);
 
 private:
     void buildAddressBytes(int addr, uint8_t *out) const;

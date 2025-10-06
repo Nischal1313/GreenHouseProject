@@ -1,11 +1,22 @@
 #include "rotaryEncoder.h"
 #include <algorithm>
+#include <cstdio>
+
+#define EEPROM_CO2_ADDR 0x00
 
 RotaryEncoder::RotaryEncoder()
     : desiredCO2(500),
       lastA(0), lastB(0),
-      eeprom(i2c1, EEPROM_ADDR)
+      eeprom(i2c0, 0x50, 2) // EEPROM on I2C0
 {
+    // Initialize EEPROM I2C bus
+    i2c_init(i2c0, 400000);
+    gpio_set_function(16, GPIO_FUNC_I2C);
+    gpio_set_function(17, GPIO_FUNC_I2C);
+    gpio_pull_up(16);
+    gpio_pull_up(17);
+
+    // Encoder GPIO setup
     gpio_init(PIN_A);
     gpio_init(PIN_B);
     gpio_set_dir(PIN_A, GPIO_IN);
@@ -13,7 +24,9 @@ RotaryEncoder::RotaryEncoder()
     gpio_pull_up(PIN_A);
     gpio_pull_up(PIN_B);
 
+    // Read stored CO2 target
     readFromEEPROM();
+
     lastA = gpio_get(PIN_A);
     lastB = gpio_get(PIN_B);
 }
@@ -23,7 +36,7 @@ int RotaryEncoder::currentRotationValue() const {
 }
 
 void RotaryEncoder::readFromEEPROM() {
-    uint8_t buf[2];
+    uint8_t buf[2] = {0};
     if (eeprom.readBlock(EEPROM_CO2_ADDR, buf, 2)) {
         desiredCO2 = (buf[0] << 8) | buf[1];
         desiredCO2 = std::clamp(desiredCO2, 200, 1500);
@@ -32,12 +45,12 @@ void RotaryEncoder::readFromEEPROM() {
     }
 }
 
-void RotaryEncoder::writeToEEPROM() const {
+void RotaryEncoder::writeToEEPROM() {
     uint8_t buf[2] = {
         static_cast<uint8_t>(desiredCO2 >> 8),
         static_cast<uint8_t>(desiredCO2 & 0xFF)
     };
-    Eeprom::writeBlock(EEPROM_CO2_ADDR, buf, 2);
+    eeprom.writeBlock(EEPROM_CO2_ADDR, buf, 2);
 }
 
 void RotaryEncoder::encoderTask(void* pv) {
@@ -50,9 +63,9 @@ void RotaryEncoder::encoderTask(void* pv) {
 
         if (a != self->lastA) {
             if (b != a)
-                self->desiredCO2 += 10;   // CW
+                self->desiredCO2 += 10;
             else
-                self->desiredCO2 -= 10;   // CCW
+                self->desiredCO2 -= 10;
 
             self->desiredCO2 = std::clamp(self->desiredCO2, 200, 1500);
             self->lastA = a;
@@ -63,6 +76,6 @@ void RotaryEncoder::encoderTask(void* pv) {
             lastWriteTick = xTaskGetTickCount();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5)); // poll every 5 ms
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }

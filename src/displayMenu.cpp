@@ -4,15 +4,15 @@
 DisplayManager::DisplayManager()
     : i2cBus(std::make_shared<PicoI2C>(1, 400000)),
       oLed(std::make_shared<ssd1306os>(i2cBus)),
-      params(nullptr)
-{}
+      params(nullptr) {
+}
 
-void DisplayManager::setParams(DisplayParams* displayParams) {
+void DisplayManager::setParams(DisplayParams *displayParams) {
     this->params = displayParams;
 }
 
-void DisplayManager::taskEntry(void* pvParameters) {
-    auto* self = static_cast<DisplayManager*>(pvParameters);
+void DisplayManager::taskEntry(void *pvParameters) {
+    auto *self = static_cast<DisplayManager *>(pvParameters);
     self->displayTask(); // Run the member task loop
 }
 
@@ -27,9 +27,8 @@ void DisplayManager::taskEntry(void* pvParameters) {
         const float temp = params->hmpSensor->readTemperature();
         const float hum = params->hmpSensor->readHumidity();
         const int desiredCO2 = params->encoder->currentRotationValue();
-        const bool fanRunning = params->modbusSystem->isFanRunning();
         const float fanSpeed = params->modbusSystem->readFanSpeed();
-        const bool valveState = params->valve->valveStatus();
+        const bool valveState = params->modbusSystem->valveStatus();
 
         snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
         oLed->text(buf, 2, 5);
@@ -37,20 +36,18 @@ void DisplayManager::taskEntry(void* pvParameters) {
         snprintf(buf, sizeof(buf), "Set: %d ppm", desiredCO2);
         oLed->text(buf, 2, 15);
 
-        snprintf(buf, sizeof(buf), "Temp: %.1fC  Humid: %.1f%%", temp, hum);
+        snprintf(buf, sizeof(buf), "Temp: %.1fC", temp);
         oLed->text(buf, 2, 25);
 
-        snprintf(buf, sizeof(buf), "Fan: %s", fanRunning ? "ON" : "OFF");
+        snprintf(buf, sizeof(buf), "Hum: %.1f%%", hum);
         oLed->text(buf, 2, 35);
-
-        snprintf(buf, sizeof(buf), "Speed: %.0f%%", fanSpeed);
+        snprintf(buf, sizeof(buf), "Fan speed: %.0f%%", fanSpeed);
         oLed->text(buf, 2, 45);
-
         snprintf(buf, sizeof(buf), "Valve: %s", valveState ? "OPEN" : "CLOSED");
         oLed->text(buf, 2, 55);
 
         oLed->show();
 
-        vTaskDelay(pdMS_TO_TICKS(1000)); // update every second
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

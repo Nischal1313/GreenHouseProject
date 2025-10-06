@@ -21,6 +21,9 @@ public:
     [[nodiscard]] bool setFanSpeed(float percent) const;
     [[nodiscard]] bool isFanRunning() const;
     [[nodiscard]] float readFanSpeed() const;
+    [[nodiscard]] bool valveStatus() const {
+        return valve.valveStatus();
+    }
 
 private:
     void handleValveLogic(int co2Lvl, int desiredCo2Lvl);

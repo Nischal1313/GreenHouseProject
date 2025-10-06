@@ -18,7 +18,6 @@ struct DisplayParams {
     HMP60* hmpSensor;
     ModbusMIO* modbusSystem;
     RotaryEncoder* encoder;
-    RELAYCONTROL* valve;
 };
 
 class DisplayManager {
