@@ -1,4 +1,4 @@
-// displayMenu.cpp - Fixed version using event-based button handling
+// displayMenu.cpp - Fixed version with better save handling and debugging
 #include "displayMenu.h"
 #include <cstdio>
 #include <cstring>
@@ -8,14 +8,17 @@ DisplayManager::DisplayManager()
       oLed(std::make_shared<ssd1306os>(i2cBus)),
       params(nullptr),
       menuState(MenuState::MAIN),
-      lastEncoderValue(0)
+      lastEncoderValue(0),
+      unsavedChanges(false)
 {
+    printf("[DisplayManager] Constructor called\n");
 }
 
 void DisplayManager::setParams(DisplayParams* displayParams) {
     this->params = displayParams;
     this->inputManager = displayParams->input;
     this->credentials = displayParams->credentials;
+    printf("[DisplayManager] Parameters set\n");
 }
 
 void DisplayManager::taskEntry(void *pvParameters) {
@@ -24,6 +27,12 @@ void DisplayManager::taskEntry(void *pvParameters) {
 }
 
 [[noreturn]] void DisplayManager::displayTask() {
+    printf("[DisplayManager] Display task started\n");
+
+    // Periodic auto-save counter
+    int autoSaveCounter = 0;
+    const int AUTO_SAVE_INTERVAL = 100;  // Save every 5 seconds (100 * 50ms)
+
     while (true) {
         oLed->fill(0);
 
@@ -32,6 +41,7 @@ void DisplayManager::taskEntry(void *pvParameters) {
 
         // Check for MENU button press event (edge-triggered)
         if (input->getMenuPressEvent()) {
+            printf("[DisplayManager] Menu button pressed\n");
             const_cast<DisplayManager*>(this)->changeMenu();
         }
 
@@ -41,19 +51,60 @@ void DisplayManager::taskEntry(void *pvParameters) {
                 break;
 
             case MenuState::WIFI:
+                // Track if we're in WiFi menu for unsaved changes
+                bool hadChanges = false;
+
                 // Check for button press events (edge-triggered)
                 if (input->getNextFieldPressEvent()) {
-                    cred->nextField();
+                    printf("[DisplayManager] Next field button pressed\n");
+                    cred->nextField();  // This already saves the current field
+                    hadChanges = true;
                 }
                 if (input->getCharsetPressEvent()) {
+                    printf("[DisplayManager] Charset button pressed\n");
                     cred->nextCharset();
                 }
+
+                // Handle encoder rotation for character selection
+                int currentEncoderValue = params->encoder->currentRotationValue();
+                int encoderDelta = currentEncoderValue - lastEncoderValue;
+
+                // Scale down the encoder delta for smoother rotation
+                if (encoderDelta >= 10) {
+                    cred->rotateChar(1);
+                    lastEncoderValue = currentEncoderValue;
+                } else if (encoderDelta <= -10) {
+                    cred->rotateChar(-1);
+                    lastEncoderValue = currentEncoderValue;
+                }
+
+                // Check if character was added (happens in getCurrentBuffer())
+                const char* oldBuffer = cred->getCurrentBuffer();
                 const_cast<DisplayManager*>(this)->drawWifiMenu();
+                const char* newBuffer = cred->getCurrentBuffer();
+
+                if (strcmp(oldBuffer, newBuffer) != 0) {
+                    hadChanges = true;
+                    printf("[DisplayManager] Buffer changed from '%s' to '%s'\n", oldBuffer, newBuffer);
+                }
+
+                if (hadChanges) {
+                    unsavedChanges = true;
+                }
+
+                // Auto-save periodically when in WiFi menu
+                autoSaveCounter++;
+                if (unsavedChanges && autoSaveCounter >= AUTO_SAVE_INTERVAL) {
+                    printf("[DisplayManager] Auto-saving WiFi credentials (periodic)...\n");
+                    cred->saveAllToEEPROM();
+                    unsavedChanges = false;
+                    autoSaveCounter = 0;
+                }
                 break;
         }
 
         oLed->show();
-        vTaskDelay(pdMS_TO_TICKS(50));  // Reduced to 50ms for more responsive display
+        vTaskDelay(pdMS_TO_TICKS(50));  // 50ms for responsive display
     }
 }
 
@@ -103,19 +154,12 @@ void DisplayManager::drawWifiMenu() {
 
     // --- Instructions ---
     oLed->text("Turn=Select", 2, 48);
-    oLed->text("Push=Add Menu=Save", 2, 56);
 
-    // --- Handle encoder rotation ---
-    int currentEncoderValue = params->encoder->currentRotationValue();
-    int encoderDelta = currentEncoderValue - lastEncoderValue;
-
-    // Scale down the encoder delta for smoother rotation
-    if (encoderDelta >= 10) {
-        cred->rotateChar(1);
-        lastEncoderValue = currentEncoderValue;
-    } else if (encoderDelta <= -10) {
-        cred->rotateChar(-1);
-        lastEncoderValue = currentEncoderValue;
+    // Show save status
+    if (unsavedChanges) {
+        oLed->text("Push=Add *UNSAVED*", 2, 56);
+    } else {
+        oLed->text("Push=Add Menu=Save", 2, 56);
     }
 }
 
@@ -124,11 +168,28 @@ void DisplayManager::changeMenu() {
         menuState = MenuState::WIFI;
         // Reset encoder value when entering WiFi menu
         lastEncoderValue = params->encoder->currentRotationValue();
-        printf("[DisplayManager] Switched to WIFI menu\n");
+        unsavedChanges = false;  // Reset unsaved flag
+
+        printf("\n[DisplayManager] ===== ENTERING WIFI MENU =====\n");
+        printf("[DisplayManager] Current SSID: '%s'\n", credentials->getWifiSSID());
+        printf("[DisplayManager] Current Password: '%s'\n", credentials->getWifiPassword());
+        printf("[DisplayManager] ================================\n\n");
     } else {
+        printf("\n[DisplayManager] ===== EXITING WIFI MENU =====\n");
+        printf("[DisplayManager] Performing final save before exit...\n");
+
         // Save when exiting WIFI menu
         credentials->saveAllToEEPROM();
+
+        // Add a delay to ensure EEPROM write completes
+        vTaskDelay(pdMS_TO_TICKS(50));
+
         menuState = MenuState::MAIN;
-        printf("[DisplayManager] Switched to MAIN menu, saved credentials\n");
+        unsavedChanges = false;
+
+        printf("[DisplayManager] Final SSID: '%s'\n", credentials->getWifiSSID());
+        printf("[DisplayManager] Final Password: '%s'\n", credentials->getWifiPassword());
+        printf("[DisplayManager] Switched to MAIN menu, credentials saved\n");
+        printf("[DisplayManager] ================================\n\n");
     }
 }
