@@ -48,8 +48,8 @@ constexpr uint LED_PIN = 22;
 // Network constants
 //---------------------------------------------------
 //Define during demo or testing
-constexpr char SSID[] = "Pixel,";
-constexpr char PASSWORD[] = "10203044";
+constexpr char SSID[] = "AmaansiPhone";
+constexpr char PASSWORD[] = "kundan123";
 constexpr int BUFSIZE = 2048;
 
 //---------------------------------------------------

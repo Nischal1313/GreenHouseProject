@@ -46,14 +46,14 @@ private:
     std::shared_ptr<SharedResources> resources;
     uint32_t event;
 
-    const char *req = "POST /talkbacks/53261/commands/execute.json HTTP/1.1\r\n"
+    const char *req = "POST /talkbacks/55419/commands/execute.json HTTP/1.1\r\n"
                       "Host: api.thingspeak.com\r\n"
                       "User-Agent: PicoW\r\n"
                       "Accept: */*\r\n"
                       "Content-Length: 24\r\n"
                       "Content-Type: application/x-www-form-urlencoded\r\n"
                       "\r\n"
-                      "api_key=ZZ4SW85BXQ6W18HV";
+                      "api_key=65BAWC3Q8R5MODFH";
 
 
     const char *req2 = "POST /update.json HTTP/1.1\r\n"

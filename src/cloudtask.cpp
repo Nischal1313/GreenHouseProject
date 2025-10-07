@@ -51,7 +51,7 @@ void CloudClass::send( int co2, int hum, int tem, int fan, int co2sp) {
 // This function we are using to send and receive data from the server togatehr
 void CloudClass::sendAndreceive(int co2, int tem, int rh, int fanSpeed, int co2sp) {
     char resp[256];
-    sprintf(resp, "POST https://api.thingspeak.com/update.json?field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&api_key=90GTB0DYRPZN9G6Y&talkback_key=ZZ4SW85BXQ6W18HV HTTP/1.1\r\n"
+    sprintf(resp, "POST https://api.thingspeak.com/update.json?field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&api_key=ROBHS91KLA5EH4ZO&talkback_key=65BAWC3Q8R5MODFH HTTP/1.1\r\n"
                  "Host: api.thingspeak.com\r\n"
                  "Connection: close\r\n"
                  "\r\n", co2, tem, rh, fanSpeed, co2sp);
