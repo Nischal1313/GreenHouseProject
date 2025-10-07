@@ -1,3 +1,5 @@
+
+// displayMenu.h - Updated header (minor change)
 #ifndef DISPLAY_MENU
 #define DISPLAY_MENU
 
@@ -19,8 +21,8 @@ struct DisplayParams {
     HMP60 *hmpSensor;
     ModbusMIO *modbusSystem;
     RotaryEncoder *encoder;
-    InputManager *input;         // <--- Added
-    SetCredentials *credentials; // <--- Added
+    InputManager *input;
+    SetCredentials *credentials;
 };
 
 enum class MenuState {
@@ -33,11 +35,7 @@ public:
     DisplayManager();
 
     void setParams(DisplayParams *displayParams);
-
-    // This function runs inside a FreeRTOS task
     [[noreturn]] void displayTask();
-
-    // Static entry point for FreeRTOS
     static void taskEntry(void *pvParameters);
 
     void drawMainMenu();
@@ -52,7 +50,7 @@ private:
     SetCredentials* credentials = nullptr;
     MenuState menuState = MenuState::MAIN;
     int lastEncoderValue = 0;
-    bool lastMenuState = false; // tracks previous MENU button state for debouncing
+    // Removed lastMenuState - no longer needed with event-based handling
 };
 
 #endif

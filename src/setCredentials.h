@@ -1,3 +1,5 @@
+
+// setCredentials.h - Updated header with clearCurrentField
 #ifndef SET_CREDENTIALS_H
 #define SET_CREDENTIALS_H
 
@@ -7,13 +9,11 @@
 #include "semphr.h"
 #include "hardware/gpio.h"
 
-// --- Editable fields ---
 enum class CredentialField {
     WIFI_NAME,
     WIFI_PASSWD
 };
 
-// --- Character set modes ---
 enum class CharsetMode {
     LOWERCASE,
     UPPERCASE,
@@ -26,32 +26,33 @@ public:
 
     void setChars();
 
-    // --- Field control ---
+    // Field control
     void nextField();
     const char* getCurrentFieldName() const;
     CredentialField getCurrentField() const { return currentField; }
 
-    // --- Charset control ---
+    // Charset control
     void nextCharset();
     CharsetMode getCharsetMode() const;
 
-    // --- Character editing ---
+    // Character editing
     char getCurrentChar() const;
     void rotateChar(int direction);
     void confirmChar();
+    void clearCurrentField();  // Added method to clear current field
 
-    // --- Buffers ---
+    // Buffers
     const char* getCurrentBuffer();
     void saveAllToEEPROM();
 
-    // --- Retrieval ---
+    // Retrieval
     const char* getWifiSSID() const { return buffers[0].c_str(); }
     const char* getWifiPassword() const { return buffers[1].c_str(); }
 
 private:
     static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0100;
     static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0140;
-    static constexpr uint16_t FIELD_SIZE = 10;  // Max 10 characters
+    static constexpr uint16_t FIELD_SIZE = 32;  // Increased to 32 chars for WiFi credentials
     static constexpr uint ENCODER_BUTTON_PIN = 12;
 
     Eeprom& eeprom;
@@ -63,13 +64,13 @@ private:
     std::string charsets[3];
 
     std::string& currentBuffer();
+    const std::string& currentBuffer() const;
     void loadFromEEPROM();
     void saveFieldToEEPROM(CredentialField field);
     bool isValidString(const uint8_t* data, size_t len) const;
     bool lastButtonState = true;
     absolute_time_t lastButtonTime;
     bool debounceButtonPressed();
-    const std::string& currentBuffer() const;
 };
 
 #endif
