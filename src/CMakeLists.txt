@@ -50,6 +50,8 @@ add_executable(${ProjectName}
 #        displayHandler.cpp
         rotaryEncoder.cpp
         eeprom.cpp
+        inputManager.cpp
+        setCredentials.cpp
 )
 
 target_include_directories(${ProjectName} PRIVATE

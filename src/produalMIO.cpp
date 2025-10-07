@@ -15,7 +15,6 @@ void ModbusMIO::controlLoop(const GMP252& sensor, const RotaryEncoder& rotaryEnc
     const int desiredValue = rotaryEncoder.currentRotationValue();
     handleValveLogic(co2Lvl, desiredValue);
 }
-
 void ModbusMIO::handleValveLogic(const int co2Lvl,const int desiredCo2Lvl) {
     const int diff = desiredCo2Lvl - co2Lvl;
 

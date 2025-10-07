@@ -22,9 +22,9 @@ int32_t EncoderHandler::readDelta() {
     if (stateA != lastStateA) {
         // clockwise = increase
         if (stateA == stateB)
-            delta = +10;
+            delta = +1;
         else
-            delta = -10;
+            delta = -1;
     }
     lastStateA = stateA;
     return delta;
