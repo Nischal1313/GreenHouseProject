@@ -51,7 +51,7 @@ public:
 private:
     static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0100;
     static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0140;
-    static constexpr uint16_t FIELD_SIZE = 64;
+    static constexpr uint16_t FIELD_SIZE = 10;  // Max 10 characters
     static constexpr uint ENCODER_BUTTON_PIN = 12;
 
     Eeprom& eeprom;
@@ -65,12 +65,11 @@ private:
     std::string& currentBuffer();
     void loadFromEEPROM();
     void saveFieldToEEPROM(CredentialField field);
+    bool isValidString(const uint8_t* data, size_t len) const;
     bool lastButtonState = true;
-    absolute_time_t lastButtonTime; // for debounce timing
-    bool debounceButtonPressed();   // debounce helper
-    // Current buffer access
-    // std::string& currentBuffer();            // for non-const functions
-    const std::string& currentBuffer() const; // for const functions
+    absolute_time_t lastButtonTime;
+    bool debounceButtonPressed();
+    const std::string& currentBuffer() const;
 };
 
 #endif

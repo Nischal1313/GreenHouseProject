@@ -37,6 +37,7 @@ private:
     static constexpr uint MENU_PIN = 7;
     static constexpr uint NEXT_FIELD_PIN = 8;
     static constexpr uint CHARSET_PIN = 9;
+    static constexpr uint32_t DEBOUNCE_MS = 150; // 150 ms debounce
 };
 
 #endif

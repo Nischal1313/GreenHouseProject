@@ -17,12 +17,14 @@ SetCredentials::SetCredentials(Eeprom& eeprom, SemaphoreHandle_t eepromMutex)
 {
     printf("[SetCredentials] Constructor called.\n");
 
+    // Initialize character sets
     charsets[0] = "abcdefghijklmnopqrstuvwxyz";
     charsets[1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     charsets[2] = "0123456789";
 
-    buffers[0] = "EMPTY";
-    buffers[1] = "EMPTY";
+    // Initialize buffers as empty
+    buffers[0] = "";
+    buffers[1] = "";
 
     loadFromEEPROM();
     setChars();
@@ -49,6 +51,32 @@ bool SetCredentials::debounceButtonPressed() {
     return false;
 }
 
+bool SetCredentials::isValidString(const uint8_t* data, size_t len) const {
+    if (len == 0) return false;
+
+    // Check if string is all zeros or all 0xFF (uninitialized EEPROM)
+    bool allZero = true;
+    bool allFF = true;
+
+    for (size_t i = 0; i < len && i < FIELD_SIZE; i++) {
+        if (data[i] != 0) allZero = false;
+        if (data[i] != 0xFF) allFF = false;
+
+        // Check for valid ASCII printable characters or null terminator
+        if (data[i] != 0 && (data[i] < 32 || data[i] > 126)) {
+            return false;  // Invalid character found
+        }
+
+        // Stop at null terminator
+        if (data[i] == 0) break;
+    }
+
+    // String is invalid if all zeros or all 0xFF
+    if (allZero || allFF) return false;
+
+    return true;
+}
+
 void SetCredentials::loadFromEEPROM() {
     uint8_t tmp[FIELD_SIZE];
     MutexGuard lock(eepromMutex);
@@ -58,19 +86,28 @@ void SetCredentials::loadFromEEPROM() {
         uint16_t addr = (idx == 0) ? EEPROM_WIFI_NAME_ADDR : EEPROM_WIFI_PASSWD_ADDR;
 
         if (lock.owns_lock() && eeprom.readBlock(addr, tmp, FIELD_SIZE)) {
-            tmp[FIELD_SIZE - 1] = '\0';
-            buffers[idx] = reinterpret_cast<char*>(tmp);
-            printf("[EEPROM] Loaded buffer %d: '%s'\n", idx, buffers[idx].c_str());
-        }
+            tmp[FIELD_SIZE - 1] = '\0';  // Ensure null termination
 
-        if (buffers[idx].empty()) buffers[idx] = "EMPTY";
+            // Validate the data before using it
+            if (isValidString(tmp, FIELD_SIZE)) {
+                buffers[idx] = reinterpret_cast<char*>(tmp);
+                printf("[EEPROM] Loaded buffer %d: '%s'\n", idx, buffers[idx].c_str());
+            } else {
+                // Invalid or uninitialized data, start with empty buffer
+                buffers[idx] = "";
+                printf("[EEPROM] Buffer %d empty or invalid, starting fresh\n", idx);
+            }
+        } else {
+            buffers[idx] = "";
+            printf("[EEPROM] Failed to read buffer %d\n", idx);
+        }
     }
 }
 
 char SetCredentials::getCurrentChar() const {
-    const std::string& buf = currentBuffer();
-    if (buf.empty() || currentCharIndex >= buf.size()) return ' ';
-    return buf[currentCharIndex];
+    const auto& cs = charsets[static_cast<int>(charsetMode)];
+    if (cs.empty() || currentCharIndex >= cs.size()) return 'a';
+    return cs[currentCharIndex];
 }
 
 std::string& SetCredentials::currentBuffer() {
@@ -80,10 +117,10 @@ std::string& SetCredentials::currentBuffer() {
 const std::string& SetCredentials::currentBuffer() const {
     return buffers[static_cast<int>(currentField)];
 }
+
 CharsetMode SetCredentials::getCharsetMode() const {
     return charsetMode;
 }
-
 
 void SetCredentials::saveFieldToEEPROM(CredentialField field) {
     uint16_t offset = (field == CredentialField::WIFI_NAME) ? EEPROM_WIFI_NAME_ADDR : EEPROM_WIFI_PASSWD_ADDR;
@@ -92,40 +129,61 @@ void SetCredentials::saveFieldToEEPROM(CredentialField field) {
     MutexGuard lock(eepromMutex);
     if (lock.owns_lock()) {
         const auto& buf = buffers[idx];
-        size_t writeLen = std::min(buf.size() + 1, static_cast<size_t>(FIELD_SIZE));
-        eeprom.writeBlock(offset, reinterpret_cast<const uint8_t*>(buf.c_str()), writeLen);
-        printf("[EEPROM] Saved field %d, len=%zu, data='%s'\n", idx, writeLen, buf.c_str());
+        uint8_t writeData[FIELD_SIZE];
+        memset(writeData, 0, FIELD_SIZE);  // Clear buffer
+
+        // Copy string data
+        size_t copyLen = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
+        memcpy(writeData, buf.c_str(), copyLen);
+        writeData[copyLen] = '\0';  // Ensure null termination
+
+        eeprom.writeBlock(offset, writeData, FIELD_SIZE);
+        printf("[EEPROM] Saved field %d, len=%zu, data='%s'\n", idx, copyLen, buf.c_str());
     }
 }
-
 
 void SetCredentials::rotateChar(int direction) {
     const auto& cs = charsets[static_cast<int>(charsetMode)];
     if (cs.empty()) return;
+
     int len = static_cast<int>(cs.size());
-    currentCharIndex = (currentCharIndex + direction + len) % len;
+    int newIndex = static_cast<int>(currentCharIndex) + direction;
+
+    // Wrap around properly
+    while (newIndex < 0) newIndex += len;
+    while (newIndex >= len) newIndex -= len;
+
+    currentCharIndex = newIndex;
     printf("[SetCredentials] Rotated char to '%c' (index=%zu)\n", cs[currentCharIndex], currentCharIndex);
 }
 
 void SetCredentials::confirmChar() {
     auto& buf = currentBuffer();
-    if (buf == "EMPTY") buf.clear();
 
-    if (buf.size() < FIELD_SIZE - 2) {
-        char c = getCurrentChar();
-        buf.push_back(c);
-        printf("[SetCredentials] Confirmed '%c', buffer='%s'\n", c, buf.c_str());
+    // Check if we've reached the limit
+    if (buf.size() >= FIELD_SIZE - 1) {
+        printf("[SetCredentials] Buffer full, cannot add more characters\n");
+        return;
     }
+
+    char c = getCurrentChar();
+    buf.push_back(c);
+    printf("[SetCredentials] Confirmed '%c', buffer='%s' (len=%zu)\n", c, buf.c_str(), buf.size());
 }
 
 const char* SetCredentials::getCurrentBuffer() {
     if (debounceButtonPressed()) {
-        printf("[SetCredentials] Encoder button pressed — confirming char.\n");
+        printf("[SetCredentials] Encoder button pressed – confirming char.\n");
         confirmChar();
     }
 
     const auto& ref = buffers[static_cast<int>(currentField)];
-    if (ref.empty()) return "EMPTY";
+
+    // Return "EMPTY" if buffer is empty
+    if (ref.empty()) {
+        return "EMPTY";
+    }
+
     return ref.c_str();
 }
 
@@ -155,4 +213,10 @@ void SetCredentials::nextCharset() {
         (charsetMode == CharsetMode::UPPERCASE) ? "UPPERCASE" :
         "NUMBERS";
     printf("[SetCredentials] Charset changed to: %s\n", modeName);
+}
+
+void SetCredentials::saveAllToEEPROM() {
+    saveFieldToEEPROM(CredentialField::WIFI_NAME);
+    saveFieldToEEPROM(CredentialField::WIFI_PASSWD);
+    printf("[SetCredentials] Saved all fields to EEPROM\n");
 }
