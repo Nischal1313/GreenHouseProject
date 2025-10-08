@@ -129,12 +129,12 @@ void DisplayManager::drawWifiMenu() {
     auto* cred = credentials;
 
     // --- Current field name ---
-    snprintf(buf, sizeof(buf), "Field: %s", cred->getCurrentFieldName());
+    snprintf(buf, sizeof(buf), "%s", cred->getCurrentFieldName());
     oLed->text(buf, 2, 0);
 
     // --- Current buffer value ---
     const char* bufferValue = cred->getCurrentBuffer();
-    snprintf(buf, sizeof(buf), "Value: %s", bufferValue);
+    snprintf(buf, sizeof(buf), "# %s", bufferValue);
     oLed->text(buf, 2, 12);
 
     // --- Current charset display ---
@@ -149,7 +149,7 @@ void DisplayManager::drawWifiMenu() {
 
     // --- Currently selected character ---
     char curChar = cred->getCurrentChar();
-    snprintf(buf, sizeof(buf), "Char: [ %c ]", curChar);
+    snprintf(buf, sizeof(buf), "Push:  %c ", curChar);
     oLed->text(buf, 2, 36);
 
     // --- Instructions ---
@@ -157,9 +157,9 @@ void DisplayManager::drawWifiMenu() {
 
     // Show save status
     if (unsavedChanges) {
-        oLed->text("Push=Add *UNSAVED*", 2, 56);
+        oLed->text("*UNSAVED*", 2, 56);
     } else {
-        oLed->text("Push=Add Menu=Save", 2, 56);
+        oLed->text("Menu=Save", 2, 56);
     }
 }
 

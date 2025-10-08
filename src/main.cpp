@@ -56,7 +56,7 @@ RotaryEncoder* encoder = nullptr; // RotaryEncoder uses I2C for EEPROM
         snprintf(buf, sizeof(buf), "CO2=%d ppm, Desired=%d ppm\n", currentCO2, desiredCO2);
         debug->print(buf);
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(1500));
     }
 }
 
@@ -103,10 +103,10 @@ int main() {
     displayManager.setParams(&displayParams);
 
     // --- Task creation ---
-    // xTaskCreate(modbusControlTask, "modbusControlTask", 2048, nullptr, 2, nullptr);
+    xTaskCreate(modbusControlTask, "modbusControlTask", 2048, nullptr, 2, nullptr);
     xTaskCreate(InputManager::taskEntry, "InputTask", 512, &inputManager, tskIDLE_PRIORITY + 3, nullptr);
     xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048, &displayManager, tskIDLE_PRIORITY + 2, nullptr);
-    // xTaskCreate(RotaryEncoder::encoderTask, "EncoderPoll", 512, encoder, tskIDLE_PRIORITY + 2, nullptr);
+    xTaskCreate(RotaryEncoder::encoderTask, "EncoderPoll", 512, encoder, tskIDLE_PRIORITY + 2, nullptr);
 
     vTaskStartScheduler();
 }

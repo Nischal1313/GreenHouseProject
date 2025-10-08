@@ -1,5 +1,4 @@
-
-// setCredentials.h - Updated header with clearCurrentField
+// setCredentials.h - Updated header with 12-char limit
 #ifndef SET_CREDENTIALS_H
 #define SET_CREDENTIALS_H
 
@@ -52,7 +51,8 @@ public:
 private:
     static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0100;
     static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0140;
-    static constexpr uint16_t FIELD_SIZE = 32;  // Increased to 32 chars for WiFi credentials
+    static constexpr uint16_t FIELD_SIZE = 32;  // EEPROM storage size
+    static constexpr int MAX_CREDENTIAL_LENGTH = 12;  // Maximum length for SSID and Password
     static constexpr uint ENCODER_BUTTON_PIN = 12;
 
     Eeprom& eeprom;

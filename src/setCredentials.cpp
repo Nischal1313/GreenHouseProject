@@ -1,4 +1,4 @@
-// setCredentials.cpp - Fixed version with enhanced EEPROM persistence and debugging
+// setCredentials.cpp - Fixed version with 12-char limit and auto-reset on 13th char
 #include "setCredentials.h"
 #include "mutexGuard.h"
 #include "pico/time.h"
@@ -128,13 +128,21 @@ void SetCredentials::loadFromEEPROM() {
         if (isValidString(tmp, FIELD_SIZE)) {
             // Find actual string length (stop at first null or end)
             size_t len = 0;
-            for (size_t i = 0; i < FIELD_SIZE - 1; i++) {
+            for (size_t i = 0; i < FIELD_SIZE - 1 && i < MAX_CREDENTIAL_LENGTH; i++) {
                 if (tmp[i] == 0) break;
                 len++;
             }
             tmp[len] = '\0';  // Ensure null termination
 
             buffers[0] = reinterpret_cast<char*>(tmp);
+
+            // Truncate if loaded string exceeds max length (shouldn't happen but safety check)
+            if (buffers[0].size() > MAX_CREDENTIAL_LENGTH) {
+                printf("[EEPROM] ⚠ Loaded SSID exceeds max length (%zu > %d), truncating\n",
+                       buffers[0].size(), MAX_CREDENTIAL_LENGTH);
+                buffers[0] = buffers[0].substr(0, MAX_CREDENTIAL_LENGTH);
+            }
+
             printf("[EEPROM] ✓ Loaded WiFi SSID: '%s' (len=%zu)\n", buffers[0].c_str(), buffers[0].size());
         } else {
             buffers[0] = "";
@@ -160,13 +168,21 @@ void SetCredentials::loadFromEEPROM() {
         if (isValidString(tmp, FIELD_SIZE)) {
             // Find actual string length
             size_t len = 0;
-            for (size_t i = 0; i < FIELD_SIZE - 1; i++) {
+            for (size_t i = 0; i < FIELD_SIZE - 1 && i < MAX_CREDENTIAL_LENGTH; i++) {
                 if (tmp[i] == 0) break;
                 len++;
             }
             tmp[len] = '\0';
 
             buffers[1] = reinterpret_cast<char*>(tmp);
+
+            // Truncate if loaded string exceeds max length
+            if (buffers[1].size() > MAX_CREDENTIAL_LENGTH) {
+                printf("[EEPROM] ⚠ Loaded Password exceeds max length (%zu > %d), truncating\n",
+                       buffers[1].size(), MAX_CREDENTIAL_LENGTH);
+                buffers[1] = buffers[1].substr(0, MAX_CREDENTIAL_LENGTH);
+            }
+
             printf("[EEPROM] ✓ Loaded WiFi Password: '%s' (len=%zu)\n", buffers[1].c_str(), buffers[1].size());
         } else {
             buffers[1] = "";
@@ -292,20 +308,32 @@ void SetCredentials::rotateChar(int direction) {
 
 void SetCredentials::confirmChar() {
     auto& buf = currentBuffer();
+    char c = getCurrentChar();
 
-    // Check if we've reached the limit
-    if (buf.size() >= FIELD_SIZE - 1) {
-        printf("[SetCredentials] Buffer full (%zu chars), cannot add more\n", buf.size());
-        return;
+    // Check if we've reached the maximum length (12 characters)
+    if (buf.size() >= MAX_CREDENTIAL_LENGTH) {
+        printf("\n[SetCredentials] ===== AUTO-RESET TRIGGERED =====\n");
+        printf("[SetCredentials] Buffer at max length (%zu chars): '%s'\n", buf.size(), buf.c_str());
+        printf("[SetCredentials] Clearing field and starting with new char '%c'\n", c);
+
+        // Clear the buffer
+        buf.clear();
+
+        // Add the new character as the first character
+        buf.push_back(c);
+
+        printf("[SetCredentials] New buffer after reset: '%s' (len=%zu)\n", buf.c_str(), buf.size());
+        printf("[SetCredentials] Field %s has been reset and started fresh\n", getCurrentFieldName());
+        printf("[SetCredentials] ===== AUTO-RESET COMPLETE =====\n\n");
+    } else {
+        // Normal case - just add the character
+        buf.push_back(c);
+        printf("[SetCredentials] Added '%c' to %s, buffer='%s' (len=%zu/%d)\n",
+               c, getCurrentFieldName(), buf.c_str(), buf.size(), MAX_CREDENTIAL_LENGTH);
     }
 
-    char c = getCurrentChar();
-    buf.push_back(c);
-    printf("[SetCredentials] Added '%c' to %s, buffer='%s' (len=%zu)\n",
-           c, getCurrentFieldName(), buf.c_str(), buf.size());
-
-    // Auto-save after each character addition
-    printf("[SetCredentials] Auto-saving after character addition...\n");
+    // Auto-save after each character addition or reset
+    printf("[SetCredentials] Auto-saving after character operation...\n");
     saveFieldToEEPROM(currentField);
 }
 
@@ -349,8 +377,9 @@ const char* SetCredentials::getCurrentFieldName() const {
 
 void SetCredentials::nextField() {
     printf("\n[SetCredentials] ===== SWITCHING FIELD =====\n");
-    printf("[SetCredentials] Current field: %s with value: '%s'\n",
-           getCurrentFieldName(), buffers[static_cast<int>(currentField)].c_str());
+    printf("[SetCredentials] Current field: %s with value: '%s' (len=%zu/%d)\n",
+           getCurrentFieldName(), buffers[static_cast<int>(currentField)].c_str(),
+           buffers[static_cast<int>(currentField)].size(), MAX_CREDENTIAL_LENGTH);
 
     // Save current field before switching
     printf("[SetCredentials] Saving current field before switch...\n");
@@ -363,8 +392,9 @@ void SetCredentials::nextField() {
     // Reset character index for new field
     currentCharIndex = 0;
 
-    printf("[SetCredentials] Switched to field: %s (current value: '%s')\n",
-           getCurrentFieldName(), buffers[static_cast<int>(currentField)].c_str());
+    printf("[SetCredentials] Switched to field: %s (current value: '%s', len=%zu/%d)\n",
+           getCurrentFieldName(), buffers[static_cast<int>(currentField)].c_str(),
+           buffers[static_cast<int>(currentField)].size(), MAX_CREDENTIAL_LENGTH);
     printf("[SetCredentials] ===== FIELD SWITCH COMPLETE =====\n\n");
 }
 
@@ -382,8 +412,10 @@ void SetCredentials::nextCharset() {
 
 void SetCredentials::saveAllToEEPROM() {
     printf("\n[SetCredentials] ===== SAVING ALL FIELDS TO EEPROM =====\n");
-    printf("[SetCredentials] Current SSID: '%s'\n", buffers[0].c_str());
-    printf("[SetCredentials] Current Password: '%s'\n", buffers[1].c_str());
+    printf("[SetCredentials] Current SSID: '%s' (len=%zu/%d)\n",
+           buffers[0].c_str(), buffers[0].size(), MAX_CREDENTIAL_LENGTH);
+    printf("[SetCredentials] Current Password: '%s' (len=%zu/%d)\n",
+           buffers[1].c_str(), buffers[1].size(), MAX_CREDENTIAL_LENGTH);
 
     saveFieldToEEPROM(CredentialField::WIFI_NAME);
     sleep_ms(20);  // Give EEPROM time between writes
