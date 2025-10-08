@@ -117,6 +117,5 @@ int main() {
     xTaskCreate(InputManager::taskEntry, "InputTask", 512, &inputManager, tskIDLE_PRIORITY + 3, nullptr);
     xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048, &displayManager, tskIDLE_PRIORITY + 2, nullptr);
     xTaskCreate(RotaryEncoder::encoderTask, "EncoderPoll", 512, encoder, tskIDLE_PRIORITY + 2, nullptr);
-
     vTaskStartScheduler();
 }
