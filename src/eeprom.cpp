@@ -205,7 +205,6 @@ bool Eeprom::readBlock(const int addr, uint8_t *buffer, const size_t length) con
 }
 
 bool Eeprom::writeBlock(int addr, const uint8_t *buffer, size_t length) {
-    printf("[EEPROM] writeBlock: Writing %zu bytes to address 0x%04X\n", length, addr);
 
     // Check for page boundary crossing (assuming 32-byte pages for 24LC64)
     const size_t PAGE_SIZE = 32;
@@ -290,7 +289,6 @@ bool Eeprom::writePageAligned(int addr, const uint8_t *buffer, size_t length) {
     while (wait_ms < 20) {  // Max 20ms timeout
         if (i2c_write_blocking(i2cPort, eepromAddr, dummy_addr, addressWidth, true) >= 0) {
             // EEPROM acknowledged - write is complete
-            printf("[EEPROM] writePageAligned: Write completed after %dms\n", wait_ms);
             break;
         }
         sleep_ms(1);

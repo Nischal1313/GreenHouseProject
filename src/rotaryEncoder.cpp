@@ -3,9 +3,11 @@
 #include <cstdio>
 
 #define EEPROM_CO2_ADDR 0x00
+extern volatile bool isInMainMenu;
 
 RotaryEncoder::RotaryEncoder()
     : desiredCO2(500),
+      desiredRotation(0),
       lastA(0), lastB(0),
       eeprom(i2c0, 0x50, 2) // EEPROM on I2C0
 {
@@ -32,7 +34,10 @@ RotaryEncoder::RotaryEncoder()
 }
 
 int RotaryEncoder::currentRotationValue() const {
-    return desiredCO2;
+    if (isInMainMenu)
+        return desiredCO2;
+    else
+        return desiredRotation;
 }
 
 void RotaryEncoder::readFromEEPROM() {
@@ -62,16 +67,27 @@ void RotaryEncoder::encoderTask(void* pv) {
         const int b = gpio_get(PIN_B);
 
         if (a != self->lastA) {
-            if (b != a)
-                self->desiredCO2 += 10;
-            else
-                self->desiredCO2 -= 10;
+            // Determine direction
+            bool clockwise = (b != a);
 
-            self->desiredCO2 = std::clamp(self->desiredCO2, 200, 1500);
+            if (isInMainMenu) {
+                // Adjust CO₂ value
+                self->desiredCO2 += clockwise ? 10 : -10;
+                self->desiredCO2 = std::clamp(self->desiredCO2, 200, 1500);
+            } else {
+                // Adjust rotation value
+                self->desiredRotation += clockwise ? 10 : -10;
+
+                // Optional: make it "wrap" around smoothly
+                if (self->desiredRotation > 5000) self->desiredRotation = -5000;
+                if (self->desiredRotation < -5000) self->desiredRotation = 5000;
+            }
+
             self->lastA = a;
         }
 
-        if (xTaskGetTickCount() - lastWriteTick > pdMS_TO_TICKS(2000)) {
+        // Only save EEPROM periodically when in main menu
+        if (isInMainMenu && (xTaskGetTickCount() - lastWriteTick > pdMS_TO_TICKS(4000))) {
             self->writeToEEPROM();
             lastWriteTick = xTaskGetTickCount();
         }

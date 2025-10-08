@@ -43,22 +43,32 @@ RotaryEncoder* encoder = nullptr; // RotaryEncoder uses I2C for EEPROM
 [[noreturn]] void displayTask(void *pvParameters) {
     static_cast<DisplayManager*>(pvParameters)->displayTask();
 }
+// --- Global menu state ---
+volatile bool isInMainMenu = true;  // true = main menu, false = submenu
+
 // --- Modbus Control Task ---
 [[noreturn]] void modbusControlTask(void* pvParameters) {
     const auto* debug = static_cast<Debug*>(pvParameters);
     while (true) {
-        // Use -> to access members
-        const int desiredCO2 = encoder->currentRotationValue();
-        const int currentCO2 = static_cast<int>(gmpSensor->readMeasuredCO2());
-        modbusSystem->controlLoop(*gmpSensor, *encoder); // Pass dereferenced objects
 
-        char buf[128];
-        snprintf(buf, sizeof(buf), "CO2=%d ppm, Desired=%d ppm\n", currentCO2, desiredCO2);
-        debug->print(buf);
+        if (isInMainMenu) {
+            const int desiredCO2 = encoder->currentRotationValue();
+            const int currentCO2 = static_cast<int>(gmpSensor->readMeasuredCO2());
+
+            modbusSystem->controlLoop(*gmpSensor, *encoder);
+
+            char buf[128];
+            snprintf(buf, sizeof(buf), "[MODBUS] CO2=%d ppm | Desired=%d ppm (Main Menu)\n", currentCO2, desiredCO2);
+            debug->print(buf);
+        } else {
+            // When not in main menu, skip control loop
+            debug->print("[MODBUS] Skipped — Submenu active\n");
+        }
 
         vTaskDelay(pdMS_TO_TICKS(1500));
     }
 }
+
 
 int main() {
     stdio_init_all();

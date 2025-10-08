@@ -67,6 +67,8 @@ void InputManager::taskEntry(void *pvParameters) {
                     // Rising edge detected (button just pressed)
                     printf("[MENU] PRESSED\n");
                     menuPressEvent = true;  // Set event flag
+                    extern volatile bool isInMainMenu;
+                    isInMainMenu = !isInMainMenu;
                 } else if (!currentMenu && menuPressed) {
                     // Falling edge detected (button released)
                     printf("[MENU] RELEASED\n");

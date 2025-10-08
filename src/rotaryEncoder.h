@@ -20,6 +20,7 @@ private:
     static constexpr uint16_t EEPROM_CO2_ADDR = 0x10;
 
     int desiredCO2;
+    int desiredRotation;
     int lastA, lastB;
     Eeprom eeprom;
 
