@@ -3,8 +3,6 @@ add_executable(${ProjectName}
         critical_section.cpp
         Fmutex.cpp
         Fmutex.h
-        blinker.cpp
-        blinker.h
 
         ipstack/IPStack.cpp
         ipstack/IPStack.h
@@ -32,26 +30,25 @@ add_executable(${ProjectName}
         display/mono_vlsb.h
         display/ssd1306os.h
         display/ssd1306os.cpp
-        produalMIO.cpp
-        gmp252.cpp
-        gpio_pin.cpp
-        Fmutex.cpp
-        blinker.cpp
-        hmp60.cpp
-        produalMIO.cpp
-        gmp252.cpp
-        sdp610.cpp
+        sensors/produalMIO.cpp
+        sensors/gmp252.cpp
+        sensors/hmp60.cpp
+        sensors/relayController.cpp
+        sensors/modbus_sensor_base.cpp
+        gpio/gpio_pin.cpp
         watchdog.cpp
         debug.cpp
-        relayController.cpp
+
         displayMenu.cpp
-#        controller.cpp
 #        encoderHandler.cpp
 #        displayHandler.cpp
-        rotaryEncoder.cpp
-        eeprom.cpp
+        rotary_encoder.cpp
+        eeprom/eeprom.cpp
         inputManager.cpp
         setCredentials.cpp
+        setpoint_manager.cpp
+        sensor_handler.cpp
+
 )
 
 target_include_directories(${ProjectName} PRIVATE
@@ -66,8 +63,8 @@ target_include_directories(${ProjectName} PRIVATE
 target_compile_definitions(${ProjectName} PRIVATE
 #        WIFI_SSID=\"$ENV{WIFI_SSID}\"
 #        WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
-        WIFI_SSID="Pixel,"
-        WIFI_PASSWORD="10203044"
+        WIFI_SSID=""
+        WIFI_PASSWORD=""
         NO_SYS=0            # don't want NO_SYS (generally this would be in your lwipopts.h)
         PICO_CYW43_ARCH_DEFAULT_COUNTRY_CODE=CYW43_COUNTRY_FINLAND
 )
