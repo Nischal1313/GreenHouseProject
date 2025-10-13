@@ -26,6 +26,7 @@ SensorValues SensorHandler::getReadings() const {
   vals.fanSpeed = fan->readFanSpeed();
   vals.valveOpen = valve->valveStatus();
   vals.targetCo2 = targetCo2;
+  return vals;
 }
 
 

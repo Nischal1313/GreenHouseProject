@@ -1,3 +1,59 @@
+// #include "displayMenu.h"
+// #include <cstdio>
+// #include "pico/stdlib.h"
+//
+// DisplayManager::DisplayManager(DisplayParams *params)
+//     : params(params) {}
+//
+// void DisplayManager::task_entry(void *param) {
+//   auto *self = static_cast<DisplayManager *>(param);
+//   self->display_task();
+// }
+//
+// [[noreturn]] void DisplayManager::display_task() {
+//   char buf[128];
+//   printf("wtd");
+//
+//   // Initialize local OLED (if not provided)
+//   auto i2cbus = std::make_shared<PicoI2C>(1, 400000);
+//   ssd1306os display(i2cbus);
+//   display.fill(0);
+//   // display.fill(1);
+//   display.text("LOL", 20, 35);
+// display.show();
+//   printf("displayyyy\n");
+//
+//   while (true) {
+//     printf("while tru\n");
+//
+//     // Pull live data from system
+//     SensorValues values = params->sensorHandler->getReadings();
+//     printf("values read\n");
+//
+//     snprintf(buf, sizeof(buf), "CO2: %.0f ppm", values.co2);
+//     display.text(buf, 2, 5, 1);
+//
+//     snprintf(buf, sizeof(buf), "Set: %d ppm", values.targetCo2);
+//     display.text(buf, 2, 15);
+//
+//     snprintf(buf, sizeof(buf), "Temp: %.1fC", values.temperature);
+//     display.text(buf, 2, 25);
+//
+//     snprintf(buf, sizeof(buf), "Hum: %.1f%%", values.humidity);
+//     display.text(buf, 2, 35);
+//
+//     snprintf(buf, sizeof(buf), "Fan: %.0f%%", values.fanSpeed);
+//     display.text(buf, 2, 45);
+//
+//     snprintf(buf, sizeof(buf), "Valve: %s", values.valveOpen ? "OPEN" : "CLOSED");
+//     display.text(buf, 2, 55);
+//
+//     display.show();
+//
+//     vTaskDelay(pdMS_TO_TICKS(200));
+//   }
+// }
+
 #include "displayMenu.h"
 #include <cstdarg>
 #include <cstdio>
@@ -71,13 +127,6 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
   int autoSaveCounter = 0;
   int updateCounter = 0;
   uint32_t loopCount = 0;
-
-  // Initialize display
-  oLed->fill(0);
-  oLed->text("CO2 System", 20, 20);
-  oLed->text("Starting...", 20, 35);
-  oLed->show();
-  vTaskDelay(pdMS_TO_TICKS(1000));
 
   while (true) {
     // Periodic heartbeat
@@ -178,11 +227,8 @@ void DisplayManager::drawMainMenu() const {
 
   // Get sensor readings
   const SensorValues readings = params->sensorHandler->getReadings();
-  printf("[DisplayManager] Sensor readings: CO2=%.0f, Temp=%.1f, Hum=%.1f, Fan=%.0f%%\n",
-         readings.co2, readings.temperature, readings.humidity, readings.fanSpeed);
-
-  // Clear display
-  oLed->fill(0);
+  printf("[DisplayManager] Sensor readings: CO2=%.0f, Temp=%.1f, Hum=%.1f, Fan=%.0f%% CO2=%.0d  \n",
+         readings.co2, readings.temperature, readings.humidity, readings.fanSpeed, readings.targetCo2);
 
   // Draw menu content
   snprintf(buf, sizeof(buf), "CO2: %.0f ppm", readings.co2);
@@ -205,7 +251,7 @@ void DisplayManager::drawMainMenu() const {
 }
 
 void DisplayManager::drawWifiMenu() {
-  printf("[DisplayManager] Drawing WIFI menu\n");
+  oLed->fill(0);
 
   auto *cred = params->credentials;
   char buf[128];
@@ -287,6 +333,7 @@ void DisplayManager::log(const char *fmt, ...) const {
 }
 
 void DisplayManager::taskEntry(void *pvParameters) {
+  // oLed->fill(0);
   auto *self = static_cast<DisplayManager *>(pvParameters);
   vTaskDelay(pdMS_TO_TICKS(500)); // Wait for system to stabilize
   printf("[DisplayManager] Task entry, starting display task...\n");

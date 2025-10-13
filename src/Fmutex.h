@@ -1,5 +1,5 @@
 /*
- * Fmutex.h
+* Fmutex.h
  *
  *  Created on: 15.8.2017
  *      Author: krl
@@ -13,12 +13,12 @@
 
 class Fmutex {
 public:
-	Fmutex();
-	~Fmutex();
-	void lock();
-	void unlock();
+  Fmutex();
+  ~Fmutex();
+  void lock();
+  void unlock();
 private:
-	SemaphoreHandle_t mutex;
+  SemaphoreHandle_t mutex;
 };
 
 #endif /* FMUTEX_H_ */

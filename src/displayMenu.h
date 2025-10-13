@@ -1,3 +1,38 @@
+// #ifndef DISPLAYMENU_H
+// #define DISPLAYMENU_H
+//
+// #include <memory>
+// #include "FreeRTOS.h"
+// #include "task.h"
+// #include "PicoI2C.h"
+// #include "ssd1306os.h"
+// #include "rotary_encoder.h"
+// #include "sensor_handler.h"
+// #include "setCredentials.h"
+// #include "inputManager.h"
+//
+// // Holds references to system components used by DisplayManager
+// struct DisplayParams {
+//   SensorHandler *sensorHandler;
+//   SetCredentials *credentials;
+//   InputManager *inputManager;
+//   ssd1306os *oLed;
+//   RotaryEncoder *encoder;
+// };
+//
+// class DisplayManager {
+// public:
+//   explicit DisplayManager(DisplayParams *params);
+//
+//   static void task_entry(void *param);  // Static entry for FreeRTOS
+//   [[noreturn]] void display_task();     // Instance task
+//
+// private:
+//   DisplayParams *params;
+// };
+//
+// #endif
+
 #ifndef DISPLAYMENU_H
 #define DISPLAYMENU_H
 

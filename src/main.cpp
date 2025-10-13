@@ -41,10 +41,6 @@ uint32_t read_runtime_ctr(void) {
 
 int main() {
   stdio_init_all();
-  printf("\n\n========================================\n");
-  printf("CO2 Control System Starting...\n");
-  printf("========================================\n");
-
   // --- I2C setup for OLED (i2c1) ---
   printf("1 - Initializing I2C1 for OLED...\n");
   i2c_init(i2c1, 400'000);
@@ -86,11 +82,6 @@ int main() {
   // --- Initialize Input Manager (GPIO buttons) ---
   printf("6 - Initializing Input Manager...\n");
   auto inputManager = std::make_shared<InputManager>();
-  // Create GPIO buttons with 150ms debounce
-  auto menuButton = std::make_unique<GPIOPin>(7, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
-  auto nextFieldButton = std::make_unique<GPIOPin>(8, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
-  auto charsetButton = std::make_unique<GPIOPin>(9, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
-
 
   // --- Initialize Credentials Manager ---
   printf("7 - Initializing Credentials Manager...\n");
@@ -106,69 +97,34 @@ int main() {
   );
   printf("   Sensor handler initialized\n");
 
-  // --- Initialize Display Manager ---
-  printf("10 - Initializing Display Manager...\n");
-  auto displayManager = std::make_shared<DisplayManager>(debug, oLed, encoder);
+  static DisplayManager displayManager(debug, oLed, encoder);
 
-  // --- Set Display Parameters ---
-  printf("11 - Setting Display Parameters...\n");
+  // --- Prepare DisplayParams ---
   DisplayParams displayParams{
     .sensorHandler = sensorHandler.get(),
-    .credentials = credentials.get(),
-    .inputManager = inputManager.get(),
-    .oLed = oLed.get(),
-    .encoder = encoder.get()
-  };
-  displayManager->setParams(&displayParams);
+    .credentials   = credentials.get(),
+    .inputManager  = inputManager.get(),
+    .oLed          = oLed.get(),
+    .encoder       = encoder.get()
+};
 
+  // --- Set parameters ---
+  displayManager.setParams(&displayParams);
+
+
+  // --- Initialize Display Manager ---
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
-
-  // Task 1: Encoder hardware polling (highest priority for responsiveness)
+  xTaskCreate(encoderUpdateTask, "EncoderHW", 1024, encoder.get(), 3, nullptr);
+  // xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048, sensorHandler.get(), 2, nullptr);
   xTaskCreate(
-    encoderUpdateTask,
-    "EncoderHW",
-    2048,
-    encoder.get(),
-    3, // Priority 3 - needs to be responsive
-    nullptr
-  );
-  printf("    - Encoder hardware task created\n");
-
-  // Task 3: Sensor Control
-  xTaskCreate(
-    SensorHandler::controlTask,
-    "SensorCtrl",
-    4096,
-    sensorHandler.get(),
-    2, // Priority 2
-    nullptr
-  );
-  printf("- Sensor control task created\n");
-
-  // Task 4: Display Update
-  xTaskCreate(
-    DisplayManager::taskEntry,
-    "Display",
-    8192,
-    displayManager.get(),
-    1, // Priority 1 (lower - not time critical)
-    nullptr
-  );
-  printf("    - Display task created\n");
-  xTaskCreate(
-  InputManager::taskEntry,
-  "InputMgr",
-  2048,
-  inputManager.get(),
-  3, // Priority 3 = responsive
-  nullptr
-);
-  printf("    - Input manager task created\n");
-
-  printf("\n========================================\n");
-  printf("Starting FreeRTOS Scheduler...\n");
-  printf("========================================\n\n");
+      DisplayManager::taskEntry,  // Task function
+      "DisplayTask",              // Name
+      2048,                       // Stack size (words)
+      &displayManager,            // Pass instance pointer as parameter
+      1,                          // Priority
+      nullptr                     // Task handle
+  );  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024, inputManager.get(), 3, nullptr);
 
   vTaskStartScheduler();
 
