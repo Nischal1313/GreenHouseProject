@@ -86,6 +86,11 @@ int main() {
   // --- Initialize Input Manager (GPIO buttons) ---
   printf("6 - Initializing Input Manager...\n");
   auto inputManager = std::make_shared<InputManager>();
+  // Create GPIO buttons with 150ms debounce
+  auto menuButton = std::make_unique<GPIOPin>(7, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
+  auto nextFieldButton = std::make_unique<GPIOPin>(8, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
+  auto charsetButton = std::make_unique<GPIOPin>(9, GPIOMode::INPUT, GPIOPull::PULLUP, false, 100);
+
 
   // --- Initialize Credentials Manager ---
   printf("7 - Initializing Credentials Manager...\n");
@@ -151,16 +156,14 @@ int main() {
     nullptr
   );
   printf("    - Display task created\n");
-
-  // Task 5: Input Manager (button polling)
   xTaskCreate(
-    InputManager::taskEntry,
-    "InputMgr",
-    2048,
-    inputManager.get(),
-    2, // Priority 2
-    nullptr
-  );
+  InputManager::taskEntry,
+  "InputMgr",
+  2048,
+  inputManager.get(),
+  3, // Priority 3 = responsive
+  nullptr
+);
   printf("    - Input manager task created\n");
 
   printf("\n========================================\n");

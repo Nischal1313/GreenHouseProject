@@ -10,25 +10,30 @@ class InputManager {
 public:
   InputManager();
 
-  // Start FreeRTOS task
   static void taskEntry(void *pvParameters);
   [[noreturn]] void inputTask() const;
 
-  // Get button press events (edge-triggered, consumed on read)
+  // Edge-triggered events
   [[nodiscard]] bool getMenuPressEvent() const;
   [[nodiscard]] bool getNextFieldPressEvent() const;
   [[nodiscard]] bool getCharsetPressEvent() const;
 
+  // Hold events
+  [[nodiscard]] bool getMenuHoldEvent() const;
+  [[nodiscard]] bool getNextFieldHoldEvent() const;
+  [[nodiscard]] bool getCharsetHoldEvent() const;
+
 private:
-  // GPIO buttons using GPIOPin class
   std::unique_ptr<GPIOPin> menuButton;
   std::unique_ptr<GPIOPin> nextFieldButton;
   std::unique_ptr<GPIOPin> charsetButton;
 
-  // GPIO pin-numbers
   static constexpr uint MENU_PIN = 7;
   static constexpr uint NEXT_FIELD_PIN = 8;
   static constexpr uint CHARSET_PIN = 9;
+
+  static constexpr uint DEBOUNCE_MS = 150;
+  static constexpr uint HOLD_MS = 1000;
 };
 
 #endif

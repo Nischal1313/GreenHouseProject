@@ -2,63 +2,57 @@
 #include <cstdio>
 
 InputManager::InputManager() {
-    // Create GPIO buttons with default settings (INPUT, PULLUP, debounce=50ms)
-    menuButton = std::make_unique<GPIOPin>(
-        MENU_PIN,
-        GPIOMode::INPUT,
-        GPIOPull::PULLUP,
-        false,  // not inverted (active low handled by GPIOPin)
-        150      // 50ms debounce
-    );
+  // Create and initialize GPIOPin buttons
+  menuButton = std::make_unique<GPIOPin>(
+      MENU_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
 
-    nextFieldButton = std::make_unique<GPIOPin>(
-        NEXT_FIELD_PIN,
-        GPIOMode::INPUT,
-        GPIOPull::PULLUP,
-        false,
-        150
-    );
+  nextFieldButton = std::make_unique<GPIOPin>(
+      NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
 
-    charsetButton = std::make_unique<GPIOPin>(
-        CHARSET_PIN,
-        GPIOMode::INPUT,
-        GPIOPull::PULLUP,
-        false,
-        150
-    );
-    printf("[InputManager] Initialized with GPIOPin buttons\n");
+  charsetButton = std::make_unique<GPIOPin>(
+      CHARSET_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
+
+  // Configure hold detection time (default = 1s)
+  menuButton->setHoldTime(HOLD_MS);
+  nextFieldButton->setHoldTime(HOLD_MS);
+  charsetButton->setHoldTime(HOLD_MS);
+
+  printf("[InputManager] Buttons initialized (pins %u, %u, %u)\n",
+         MENU_PIN, NEXT_FIELD_PIN, CHARSET_PIN);
 }
 
-// FreeRTOS task entry
 void InputManager::taskEntry(void *pvParameters) {
-    const auto *self = static_cast<InputManager *>(pvParameters);
-    self->inputTask();
+  const auto *self = static_cast<InputManager *>(pvParameters);
+  self->inputTask();
 }
 
-// Input polling loop - just call update() on each button
 [[noreturn]] void InputManager::inputTask() const {
-    printf("[InputManager] Task started\n");
+  printf("[InputManager] Task started\n");
 
-    while (true) {
-        // Update all buttons (handles debouncing internally)
-        menuButton->update();
-        nextFieldButton->update();
-        charsetButton->update();
+  while (true) {
+    menuButton->update();
+    nextFieldButton->update();
+    charsetButton->update();
 
-        // Poll every 5ms for responsive input
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    // Debug print to confirm runtime operation
+    if (menuButton->pressed())  printf("[BTN] MENU pressed\n");
+    if (nextFieldButton->pressed()) printf("[BTN] NEXT pressed\n");
+    if (charsetButton->pressed()) printf("[BTN] CHARSET pressed\n");
+
+    if (menuButton->held())  printf("[BTN] MENU held\n");
+    if (nextFieldButton->held()) printf("[BTN] NEXT held\n");
+    if (charsetButton->held()) printf("[BTN] CHARSET held\n");
+
+    vTaskDelay(pdMS_TO_TICKS(10));  // fast and responsive
+  }
 }
 
-// Get button press events (consumed on read)
-bool InputManager::getMenuPressEvent() const {
-    return menuButton->pressed();
-}
+// --- Press Event Getters ---
+bool InputManager::getMenuPressEvent() const  { return menuButton->pressed(); }
+bool InputManager::getNextFieldPressEvent() const { return nextFieldButton->pressed(); }
+bool InputManager::getCharsetPressEvent() const   { return charsetButton->pressed(); }
 
-bool InputManager::getNextFieldPressEvent() const {
-    return nextFieldButton->pressed();
-}
-
-bool InputManager::getCharsetPressEvent() const {
-    return charsetButton->pressed();
-}
+// --- Hold Event Getters ---
+bool InputManager::getMenuHoldEvent() const  { return menuButton->held(); }
+bool InputManager::getNextFieldHoldEvent() const { return nextFieldButton->held(); }
+bool InputManager::getCharsetHoldEvent() const   { return charsetButton->held(); }
