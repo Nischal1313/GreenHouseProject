@@ -28,7 +28,6 @@ private:
   // Encoder state
   int lastEncoded; // previous A/B state
   bool cwEvent, ccwEvent;
-  int lastA{}, lastB{};
   // Button state
   bool lastButtonReading;
   bool buttonState;
