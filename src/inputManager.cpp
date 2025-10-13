@@ -8,7 +8,7 @@ InputManager::InputManager() {
         GPIOMode::INPUT,
         GPIOPull::PULLUP,
         false,  // not inverted (active low handled by GPIOPin)
-        50      // 50ms debounce
+        150      // 50ms debounce
     );
 
     nextFieldButton = std::make_unique<GPIOPin>(
@@ -16,7 +16,7 @@ InputManager::InputManager() {
         GPIOMode::INPUT,
         GPIOPull::PULLUP,
         false,
-        50
+        150
     );
 
     charsetButton = std::make_unique<GPIOPin>(
@@ -24,7 +24,7 @@ InputManager::InputManager() {
         GPIOMode::INPUT,
         GPIOPull::PULLUP,
         false,
-        50
+        150
     );
     printf("[InputManager] Initialized with GPIOPin buttons\n");
 }
@@ -46,7 +46,7 @@ void InputManager::taskEntry(void *pvParameters) {
         charsetButton->update();
 
         // Poll every 5ms for responsive input
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 

@@ -64,5 +64,5 @@ private:
   static constexpr uint CONTROL_LOOP_DELAY = 6000; // ms
 
   // Control logic
-  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl);
+  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) const;
 };

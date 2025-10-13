@@ -9,25 +9,25 @@
 
 class ModbusSensorBase {
 protected:
-    std::shared_ptr<ModbusClient> modbus;
-    SemaphoreHandle_t busMutex;
-    uint8_t slaveAddress;
+  std::shared_ptr<ModbusClient> modbus;
+  SemaphoreHandle_t busMutex;
 
-    // Helper: Prepares the Modbus target address safely
-    [[nodiscard]] MutexGuard prepareModbus() const;
+  // Pure virtual: each sensor must define its slave address
+  [[nodiscard]] virtual uint8_t getSlaveAddress() const = 0;
 
-    // Core I/O functions
-    [[nodiscard]] float readFloat(uint16_t address) const;
-    [[nodiscard]] int16_t readInt(uint16_t address) const;
-    [[nodiscard]] bool readBool(uint16_t address) const;
+  // Helper: Prepares the Modbus target address safely
+  [[nodiscard]] MutexGuard prepareModbus() const;
 
-    [[nodiscard]] bool writeUInt(uint16_t address, uint16_t value) const;
-
-    [[nodiscard]] bool writeFloat(uint16_t address, float value) const;
+  // Core I/O functions
+  [[nodiscard]] float readFloat(uint16_t address) const;
+  [[nodiscard]] int16_t readInt(uint16_t address) const;
+  [[nodiscard]] bool readBool(uint16_t address) const;
+  [[nodiscard]] bool writeUInt(uint16_t address, uint16_t value) const;
+  [[nodiscard]] bool writeFloat(uint16_t address, float value) const;
 
 public:
-    explicit ModbusSensorBase(std::shared_ptr<ModbusClient> modbus,
-                              SemaphoreHandle_t mutex);
+  explicit ModbusSensorBase(std::shared_ptr<ModbusClient> modbus,
+                            SemaphoreHandle_t mutex);
 
-    virtual ~ModbusSensorBase() = default;
+  virtual ~ModbusSensorBase() = default;
 };

@@ -8,8 +8,6 @@
 SensorHandler::SensorHandler(SetpointManager *spManager, const SemaphoreHandle_t mutex)
   : setpointManager(spManager), mutex(mutex) {
 
-  // Initialize hardware - create Modbus mutex for sensor communication
-
   // Initialize UART for Modbus communication
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
   auto modbusClient = std::make_shared<ModbusClient>(uart);
@@ -40,7 +38,7 @@ SensorValues SensorHandler::getLatestReadings() const {
   return latestReadings;
 }
 
-void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desiredCo2Lvl) {
+void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desiredCo2Lvl) const {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
 
   if (std::abs(diff) > ACCEPTED_RANGE) {
@@ -85,7 +83,7 @@ void SensorHandler::updateControl() {
   if (!std::isnan(currentCo2)) {
     handleValveAndFanLogic(currentCo2, targetCo2);
   } else {
-    printf("SensorHandler: CO₂ read failed.\n");
+    printf("SensorHandler: CO2 read failed.\n");
   }
 }
 
@@ -103,7 +101,6 @@ void SensorHandler::updateControl() {
 }
 
 void SensorHandler::controlTask(void *pvParameters) {
-  printf("In this task");
   auto *self = static_cast<SensorHandler *>(pvParameters);
   self->controlLoop();
 }

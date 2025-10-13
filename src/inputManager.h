@@ -15,9 +15,9 @@ public:
   [[noreturn]] void inputTask() const;
 
   // Get button press events (edge-triggered, consumed on read)
-  bool getMenuPressEvent() const;
-  bool getNextFieldPressEvent() const;
-  bool getCharsetPressEvent() const;
+  [[nodiscard]] bool getMenuPressEvent() const;
+  [[nodiscard]] bool getNextFieldPressEvent() const;
+  [[nodiscard]] bool getCharsetPressEvent() const;
 
 private:
   // GPIO buttons using GPIOPin class

@@ -16,12 +16,10 @@
  * against known patterns. This method filters bounce and invalid states.
  */
 
-RotaryEncoder::RotaryEncoder(uint pinA, uint pinB, uint pinButton,
-                             uint stepsPerRevolution,
-                             uint32_t debounceTime, uint32_t holdTime)
+RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB, const uint pinButton,
+                             const uint32_t debounceTime, const uint32_t holdTime)
     : pinA(pinA), pinB(pinB), pinButton(pinButton),
-      position(0), fullRotations(0),
-      stepsPerRevolution(stepsPerRevolution),
+
       lastEncoded(0), cwEvent(false), ccwEvent(false),
       lastButtonReading(false), buttonState(false),
       pressedEvent(false), heldEvent(false),
@@ -40,42 +38,48 @@ RotaryEncoder::RotaryEncoder(uint pinA, uint pinB, uint pinButton,
     pressStartTime = get_absolute_time();
 }
 
+
+
 void RotaryEncoder::update() {
-    // ---- ENCODER ROTATION ----
-    const int MSB = !gpio_get(pinA);
-    const int LSB = !gpio_get(pinB);
-    const int encoded = (MSB << 1) | LSB;
-    const int transition = (lastEncoded << 2) | encoded;
+    // // ---- ENCODER ROTATION ----
+    // const int MSB = !gpio_get(pinA);
+    // const int LSB = !gpio_get(pinB);
+    // const int encoded = (MSB << 1) | LSB;
+    // const int transition = (lastEncoded << 2) | encoded;
+    //
+    // // These 8 transitions are valid
+    // switch (transition) {
+    //     // CW transitions
+    //     case 0b1101: case 0b0100: case 0b0010: case 0b1011:
+    //         ccwEvent = false;
+    //         cwEvent = true;
+    //         break;
+    //
+    //     // CCW transitions
+    //     case 0b1110: case 0b0111: case 0b0001: case 0b1000:
+    //         cwEvent = false;
+    //         ccwEvent = true;
+    //         break;
+    //
+    //     default:
+    //         // Ignore invalid
+    //         break;
+    // }
+    // lastEncoded = encoded;
+    const int a = gpio_get(pinA);
+    const int b = gpio_get(pinB);
 
-    // These 8 transitions are valid
-    switch (transition) {
-        // CW transitions
-        case 0b1101: case 0b0100: case 0b0010: case 0b1011:
-            position++;
+    if (a != lastA) {
+        bool clockwise = (b != a);
+        if (clockwise) {
             cwEvent = true;
-            break;
-
-        // CCW transitions
-        case 0b1110: case 0b0111: case 0b0001: case 0b1000:
-            position--;
+            ccwEvent = false;
+        } else {
+            cwEvent = false;
             ccwEvent = true;
-            break;
-
-        default:
-            // Ignore invalid transitions (bouncing or noise)
-            break;
+        }
+        lastA = a;
     }
-
-    // Normalize to full rotations
-    if (position >= stepsPerRevolution) {
-        position = 0;
-        fullRotations++;
-    } else if (position <= -stepsPerRevolution) {
-        position = 0;
-        fullRotations--;
-    }
-
-    lastEncoded = encoded;
 
     // ---- BUTTON HANDLING ----
     const bool reading = !gpio_get(pinButton); // active low
@@ -128,6 +132,3 @@ bool RotaryEncoder::buttonHeld() {
     if (heldEvent) { heldEvent = false; return true; }
     return false;
 }
-
-int RotaryEncoder::getPosition() const { return position; }
-int RotaryEncoder::getFullRotations() const { return fullRotations; }

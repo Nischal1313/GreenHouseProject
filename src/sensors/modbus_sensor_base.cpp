@@ -8,7 +8,8 @@ ModbusSensorBase::ModbusSensorBase(std::shared_ptr<ModbusClient> modbus,
 MutexGuard ModbusSensorBase::prepareModbus() const {
     MutexGuard lock(busMutex);
     if (lock.owns_lock()) {
-        modbus->set_destination_rtu_address(slaveAddress);
+        // Call derived class's getSlaveAddress()
+        modbus->set_destination_rtu_address(getSlaveAddress());
     }
     return lock;
 }
@@ -20,7 +21,8 @@ float ModbusSensorBase::readFloat(const uint16_t address) const {
     uint16_t regs[2];
     const int res = modbus->read_holding_registers(address, 2, regs);
     if (res != NMBS_ERROR_NONE) {
-        printf("Modbus read error %d (addr=0x%04X)\n", res, address);
+        printf("Modbus read error %d (addr=0x%04X, slave=%d)\n",
+               res, address, getSlaveAddress());
         return NAN;
     }
 
@@ -37,20 +39,22 @@ int16_t ModbusSensorBase::readInt(const uint16_t address) const {
     uint16_t value{};
     const int res = modbus->read_holding_registers(address, 1, &value);
     if (res != NMBS_ERROR_NONE) {
-        printf("Modbus read error %d (addr=0x%04X)\n", res, address);
+        printf("Modbus read error %d (addr=0x%04X, slave=%d)\n",
+               res, address, getSlaveAddress());
         return 0xFFFF;
     }
     return value;
 }
 
-bool ModbusSensorBase::readBool(const  uint16_t address) const {
+bool ModbusSensorBase::readBool(const uint16_t address) const {
     auto lock = prepareModbus();
     if (!lock.owns_lock()) return false;
 
     uint8_t value{};
     const int res = modbus->read_coils(address, 1, &value);
     if (res != NMBS_ERROR_NONE) {
-        printf("Modbus coil read error %d (addr=0x%04X)\n", res, address);
+        printf("Modbus coil read error %d (addr=0x%04X, slave=%d)\n",
+               res, address, getSlaveAddress());
         return false;
     }
     return value != 0;

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DISPLAYMENU_H
+#define DISPLAYMENU_H
 
 #include <memory>
 #include "PicoI2C.h"
@@ -22,15 +23,17 @@ enum class MenuState {
 struct DisplayParams {
   SensorHandler *sensorHandler;
   SetpointManager *setpointManager;
-  RotaryEncoder *encoder;
   SetCredentials *credentials;
   InputManager *inputManager;
   ssd1306os *oLed;
+  RotaryEncoder *encoder; // Add encoder back for WiFi menu
 };
 
 class DisplayManager {
 public:
-  explicit DisplayManager(std::shared_ptr<Debug> debug, std::shared_ptr<ssd1306os> oled);
+  explicit DisplayManager(std::shared_ptr<Debug> debug, std::shared_ptr<ssd1306os> oled,
+                          const std::shared_ptr<RotaryEncoder> &encoderPtr);
+
 
   void setParams(DisplayParams *displayParams);
 
@@ -38,15 +41,18 @@ public:
 
   static void taskEntry(void *pvParameters);
 
+  // Inside the DisplayManager class declaration
+  [[nodiscard]] MenuState getCurrentMenuState() const;
+
 private:
   std::shared_ptr<ssd1306os> oLed;
+  std::shared_ptr<Debug> debug;
+  std::shared_ptr<RotaryEncoder> encoder; // For WiFi menu character selection
 
   DisplayParams *params;
-  MenuState menuState;
-  int lastEncoderValue;
+  int lastWifiEncoderPos; // Track encoder position for WiFi menu
   bool unsavedChanges;
-
-  std::shared_ptr<Debug> debug;
+  MenuState menuState = MenuState::MAIN;
 
   void drawMainMenu() const;
 
@@ -54,8 +60,11 @@ private:
 
   void changeMenu();
 
-  void handleWifiMenuButtons(); // New helper for WiFi menu buttons
+  void handleWifiMenuButtons();
+
   void log(const char *fmt, ...) const;
 
   static constexpr uint32_t AUTO_SAVE_INTERVAL_MS = 10'000; // 10 seconds
 };
+
+#endif
