@@ -113,20 +113,20 @@ int main() {
   printf("   Sensor handler initialized\n");
 
   // --- Initialize Display Manager ---
-  printf("10 - Initializing Display Manager...\n");
-  auto displayManager = std::make_shared<DisplayManager>(debug, oLed, encoder);
-
-  // --- Set Display Parameters ---
-  printf("11 - Setting Display Parameters...\n");
-  DisplayParams displayParams{
-    .sensorHandler = sensorHandler.get(),
-    .setpointManager = setpointManager.get(),
-    .credentials = credentials.get(),
-    .inputManager = inputManager.get(),
-    .oLed = oLed.get(),
-    .encoder = encoder.get()
-  };
-  displayManager->setParams(&displayParams);
+  // printf("10 - Initializing Display Manager...\n");
+  // auto displayManager = std::make_shared<DisplayManager>(debug, oLed, encoder);
+  //
+  // // --- Set Display Parameters ---
+  // printf("11 - Setting Display Parameters...\n");
+  // DisplayParams displayParams{
+  //   .sensorHandler = sensorHandler.get(),
+  //   .setpointManager = setpointManager.get(),
+  //   .credentials = credentials.get(),
+  //   .inputManager = inputManager.get(),
+  //   .oLed = oLed.get(),
+  //   .encoder = encoder.get()
+  // };
+  // displayManager->setParams(&displayParams);
 
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
@@ -164,16 +164,16 @@ int main() {
   );
   printf("    - Sensor control task created\n");
 
-  // Task 4: Display Update
-  xTaskCreate(
-    DisplayManager::taskEntry,
-    "Display",
-    8192,
-    displayManager.get(),
-    1, // Priority 1 (lower - not time critical)
-    nullptr
-  );
-  printf("    - Display task created\n");
+  // // Task 4: Display Update
+  // xTaskCreate(
+  //   DisplayManager::taskEntry,
+  //   "Display",
+  //   8192,
+  //   displayManager.get(),
+  //   1, // Priority 1 (lower - not time critical)
+  //   nullptr
+  // );
+  // printf("    - Display task created\n");
 
   // Task 5: Input Manager (button polling)
   xTaskCreate(
