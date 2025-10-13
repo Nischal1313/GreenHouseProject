@@ -102,11 +102,11 @@ int main() {
   // --- Prepare DisplayParams ---
   DisplayParams displayParams{
     .sensorHandler = sensorHandler.get(),
-    .credentials   = credentials.get(),
-    .inputManager  = inputManager.get(),
-    .oLed          = oLed.get(),
-    .encoder       = encoder.get()
-};
+    .credentials = credentials.get(),
+    .inputManager = inputManager.get(),
+    .oLed = oLed.get(),
+    .encoder = encoder.get()
+  };
 
   // --- Set parameters ---
   displayManager.setParams(&displayParams);
@@ -115,16 +115,14 @@ int main() {
   // --- Initialize Display Manager ---
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
+
   xTaskCreate(encoderUpdateTask, "EncoderHW", 1024, encoder.get(), 3, nullptr);
-  // xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048, sensorHandler.get(), 2, nullptr);
-  xTaskCreate(
-      DisplayManager::taskEntry,  // Task function
-      "DisplayTask",              // Name
-      2048,                       // Stack size (words)
-      &displayManager,            // Pass instance pointer as parameter
-      1,                          // Priority
-      nullptr                     // Task handle
-  );  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024, inputManager.get(), 3, nullptr);
+
+  xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048, sensorHandler.get(), 2, nullptr);
+
+  xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048, &displayManager, 1, nullptr);
+
+  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024, inputManager.get(), 3, nullptr);
 
   vTaskStartScheduler();
 

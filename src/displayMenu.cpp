@@ -83,59 +83,20 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
     printf("[DisplayManager] ERROR: displayParams is NULL!\n");
     return;
   }
-
-  printf("[DisplayManager] Setting params:\n");
-  printf("  - sensorHandler: %p\n", (void *) displayParams->sensorHandler);;
-  printf("  - credentials: %p\n", (void *) displayParams->credentials);
-  printf("  - inputManager: %p\n", (void *) displayParams->inputManager);
-  printf("  - oLed: %p\n", (void *) displayParams->oLed);
-  printf("  - encoder: %p\n", (void *) displayParams->encoder);
-
   params = displayParams;
   printf("[DisplayManager] Parameters set successfully\n");
 }
 
 [[noreturn]] void DisplayManager::displayTask() {
-  printf("[DisplayManager] displayTask() started\n");
 
-  // Initial safety check
-  if (!params) {
-    printf("[DisplayManager] FATAL: params is NULL in displayTask!\n");
-    while (true) {
-      printf("[DisplayManager] Waiting for params...\n");
-      vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+  if (encoder->rotatedCW() || encoder->rotatedCCW() || encoder->buttonPressed()) {
+    drawMainMenu();
   }
 
-  // Verify all components are valid
-  if (!params->sensorHandler ||
-      !params->credentials || !params->inputManager ||
-      !params->encoder || !oLed) {
-    printf("[DisplayManager] ERROR: One or more components are NULL!\n");
-    printf("  sensorHandler: %p\n", (void *) params->sensorHandler);
-    printf("  credentials: %p\n", (void *) params->credentials);
-    printf("  inputManager: %p\n", (void *) params->inputManager);
-    printf("  encoder: %p\n", (void *) params->encoder);
-    printf("  oLed: %p\n", (void *) oLed.get());
-    while (true) vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-
-  log("[DisplayManager] Display task started successfully\n");
-  printf("[DisplayManager] Initial menu state: %s\n",
-         menuState == MenuState::MAIN ? "MAIN" : "WIFI");
 
   int autoSaveCounter = 0;
   int updateCounter = 0;
-  uint32_t loopCount = 0;
-
   while (true) {
-    // Periodic heartbeat
-    if (loopCount % 100 == 0) {
-      printf("[DisplayManager] Loop %lu, menu=%s\n",
-             loopCount, menuState == MenuState::MAIN ? "MAIN" : "WIFI");
-    }
-    loopCount++;
-
     // Handle MENU button press (switch between MAIN and WIFI menus)
     if (params->inputManager->getMenuPressEvent()) {
       printf("[DisplayManager] Menu button pressed! Current state: %s\n",
@@ -147,8 +108,6 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
     // Handle WiFi menu specific logic
     if (menuState == MenuState::WIFI) {
       handleWifiMenuButtons();
-
-      // ONLY read encoder in WiFi menu - DO NOT read in MAIN menu!
       if (encoder->rotatedCW()) {
         printf("[DisplayManager] Encoder CW in WiFi menu\n");
         params->credentials->rotateChar(1);
@@ -170,12 +129,8 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
       }
     }
 
-    // Update display every second (20 * 50ms = 1000ms)
     updateCounter++;
-    if (updateCounter >= 20) {
-      printf("[DisplayManager] Updating display for menu: %s\n",
-             menuState == MenuState::MAIN ? "MAIN" : "WIFI");
-
+    if (updateCounter >= 1) {
       switch (menuState) {
         case MenuState::MAIN:
           drawMainMenu();
@@ -187,19 +142,19 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
       updateCounter = 0;
     }
 
-    // Auto-save WiFi credentials periodically
-    if (menuState == MenuState::WIFI) {
-      autoSaveCounter += 50;
-      if (unsavedChanges && autoSaveCounter >= AUTO_SAVE_INTERVAL_MS) {
-        log("[DisplayManager] Auto-saving WiFi credentials\n");
-        params->credentials->saveAllToEEPROM();
-        unsavedChanges = false;
-        autoSaveCounter = 0;
-      }
-    } else {
-      autoSaveCounter = 0;
-    }
-
+    // // Auto-save WiFi credentials periodically
+    // if (menuState == MenuState::WIFI) {
+    //   autoSaveCounter += 50;
+    //   if (unsavedChanges && autoSaveCounter >= AUTO_SAVE_INTERVAL_MS) {
+    //     log("[DisplayManager] Auto-saving WiFi credentials\n");
+    //     params->credentials->saveAllToEEPROM();
+    //     unsavedChanges = false;
+    //     autoSaveCounter = 0;
+    //   }
+    // } else {
+    //   autoSaveCounter = 0;
+    // }
+    //
 
     vTaskDelay(pdMS_TO_TICKS(50));
   }
@@ -221,33 +176,34 @@ void DisplayManager::handleWifiMenuButtons() {
 }
 
 void DisplayManager::drawMainMenu() const {
-  printf("[DisplayManager] Drawing MAIN menu\n");
+  oLed->fill(1);
+  oLed->fill(0);
 
   char buf[128];
-
   // Get sensor readings
-  const SensorValues readings = params->sensorHandler->getReadings();
-  printf("[DisplayManager] Sensor readings: CO2=%.0f, Temp=%.1f, Hum=%.1f, Fan=%.0f%% CO2=%.0d  \n",
-         readings.co2, readings.temperature, readings.humidity, readings.fanSpeed, readings.targetCo2);
-
+  const auto [temperature, humidity,
+    co2, fanSpeed, valveOpen,
+    targetCo2] = params->sensorHandler->getReadings();
   // Draw menu content
-  snprintf(buf, sizeof(buf), "CO2: %.0f ppm", readings.co2);
+  snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
   oLed->text(buf, 2, 5);
 
-  snprintf(buf, sizeof(buf), "Set: %d ppm", readings.targetCo2);
+  snprintf(buf, sizeof(buf), "Set: %d ppm", targetCo2);
   oLed->text(buf, 2, 15);
 
-  snprintf(buf, sizeof(buf), "Temp: %.1fC", readings.temperature);
+  snprintf(buf, sizeof(buf), "Temp: %.1fC", temperature);
   oLed->text(buf, 2, 25);
 
-  snprintf(buf, sizeof(buf), "Hum: %.1f%%", readings.humidity);
+  snprintf(buf, sizeof(buf), "Hum: %.1f%%", humidity);
   oLed->text(buf, 2, 35);
 
-  snprintf(buf, sizeof(buf), "Fan: %.0f%%", readings.fanSpeed);
+  snprintf(buf, sizeof(buf), "Fan: %.0f%%", fanSpeed);
   oLed->text(buf, 2, 45);
 
-  snprintf(buf, sizeof(buf), "Valve: %s", readings.valveOpen ? "OPEN" : "CLOSED");
+  snprintf(buf, sizeof(buf), "Valve: %s", valveOpen ? "OPEN" : "CLOSED");
   oLed->text(buf, 2, 55);
+
+  oLed->show();
 }
 
 void DisplayManager::drawWifiMenu() {
@@ -301,21 +257,15 @@ void DisplayManager::changeMenu() {
   if (menuState == MenuState::MAIN) {
     menuState = MenuState::WIFI;
     unsavedChanges = false;
-    printf("[DisplayManager] ==> Switched to WIFI menu\n");
-    log("\n[DisplayManager] Entering WIFI menu\nSSID='%s' PW='%s'\n",
-        params->credentials->getWifiSSID(),
-        params->credentials->getWifiPassword());
-  } else {
-    printf("[DisplayManager] ==> Switching to MAIN menu, saving credentials first...\n");
-    log("\n[DisplayManager] Exiting WIFI menu\nSaving credentials...\n");
-    params->credentials->saveAllToEEPROM();
-    vTaskDelay(pdMS_TO_TICKS(50));
-    menuState = MenuState::MAIN;
-    unsavedChanges = false;
-    printf("[DisplayManager] ==> Switched to MAIN menu\n");
-    log("[DisplayManager] Switched to MAIN menu\nSSID='%s' PW='%s'\n",
-        params->credentials->getWifiSSID(),
-        params->credentials->getWifiPassword());
+    // } else {
+    //   params->credentials->saveAllToEEPROM();
+    //   vTaskDelay(pdMS_TO_TICKS(50));
+    //   menuState = MenuState::MAIN;
+    //   unsavedChanges = false;
+    //   printf("[DisplayManager] ==> Switched to MAIN menu\n");
+    //   log("[DisplayManager] Switched to MAIN menu\nSSID='%s' PW='%s'\n",
+    //       params->credentials->getWifiSSID(),
+    //       params->credentials->getWifiPassword());
   }
 }
 
@@ -333,9 +283,6 @@ void DisplayManager::log(const char *fmt, ...) const {
 }
 
 void DisplayManager::taskEntry(void *pvParameters) {
-  // oLed->fill(0);
   auto *self = static_cast<DisplayManager *>(pvParameters);
-  vTaskDelay(pdMS_TO_TICKS(500)); // Wait for system to stabilize
-  printf("[DisplayManager] Task entry, starting display task...\n");
   self->displayTask();
 }

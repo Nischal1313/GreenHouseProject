@@ -38,7 +38,7 @@ public:
   SensorValues getReadings() const;
 
   // Control valve/fan based on current CO2 vs setpoint
-  void updateControl() const;
+  void updateControl();
 
   // Get latest cached sensor readings
 
@@ -74,9 +74,12 @@ private:
   static constexpr uint16_t MAX_CO2 = 1500;
 
   int targetCo2{};
+  mutable uint32_t lastValveActionTime{0};
+  mutable bool valveActive{false};
+  mutable uint32_t valveOpenDuration{0};
 
   // Control logic
-  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) const;
+  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl);
 
   void updateFromEncoder();
 };

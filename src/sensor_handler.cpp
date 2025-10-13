@@ -30,35 +30,43 @@ SensorValues SensorHandler::getReadings() const {
 }
 
 
-void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desiredCo2Lvl) const {
+void SensorHandler::handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
+  const uint32_t now = to_ms_since_boot(get_absolute_time());
 
+  // Handle ongoing valve open period
+  if (valveActive) {
+    if (now - lastValveActionTime >= valveOpenDuration) {
+      valve->closeValve();
+      fan->setFanSpeed(IDLE_SPEED);
+      valveActive = false;
+      lastValveActionTime = now;
+    }
+    return; // While valve is open, don't start new actions
+  }
+
+  // Skip control if still within cooldown (VALVE_IDLE_TIME)
+  if (now - lastValveActionTime < VALVE_IDLE_TIME) return;
+
+  // Only act if CO2 difference is significant
   if (std::abs(diff) > ACCEPTED_RANGE) {
-    // CO2 too high → ventilation
     if (diff < 0) {
+      // Too high → ventilation
       fan->setFanSpeed(FULL_SPEED);
       valve->closeValve();
-      return;
+    } else {
+      // Too low → CO2 injection
+      int openTimeMs = (diff * static_cast<int>(MAX_VALVE_OPEN_TIME)) / 1000;
+      openTimeMs = std::clamp(openTimeMs, 50, static_cast<int>(MAX_VALVE_OPEN_TIME));
+
+      valve->openValve();
+      fan->setFanSpeed(IDLE_SPEED);
+      valveActive = true;
+      valveOpenDuration = openTimeMs;
+      lastValveActionTime = now;
     }
-
-    // CO2 too low → inject CO2
-    // Scaling: MAX_VALVE_OPEN_TIME = 2s → +1000 ppm
-    int openTimeMs = (diff * static_cast<int>(MAX_VALVE_OPEN_TIME)) / 1000;
-    openTimeMs = std::clamp(openTimeMs, 50, static_cast<int>(MAX_VALVE_OPEN_TIME));
-
-    // Open valve and inject CO2
-    fan->setFanSpeed(IDLE_SPEED);
-    valve->openValve();
-    vTaskDelay(pdMS_TO_TICKS(openTimeMs));
-    valve->closeValve();
-
-    // Wait for CO2 to settle after injection
-    vTaskDelay(pdMS_TO_TICKS(VALVE_IDLE_TIME));
-
-    // Set fan to idle after injection
-    fan->setFanSpeed(IDLE_SPEED);
   } else {
-    // Within acceptable range - maintain idle
+    // Within acceptable range
     fan->setFanSpeed(IDLE_SPEED);
     valve->closeValve();
   }
@@ -79,7 +87,7 @@ void SensorHandler::updateFromEncoder() {
 }
 
 
-void SensorHandler::updateControl() const {
+void SensorHandler::updateControl() {
   // Read CO2 sensor
   const float currentCo2 = gmpSensor->readMeasuredCO2();
   // Validate reading before controlling
@@ -93,7 +101,6 @@ void SensorHandler::updateControl() const {
 
 [[noreturn]] void SensorHandler::controlLoop() {
   while (true) {
-    // getReadings();
     updateControl();
     updateFromEncoder();
     vTaskDelay(pdMS_TO_TICKS(60));
