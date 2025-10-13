@@ -83,7 +83,7 @@ void SensorHandler::updateControl() const {
   const float currentCo2 = gmpSensor->readMeasuredCO2();
   // Validate reading before controlling
   if (!std::isnan(currentCo2)) {
-    printf("Current CO2: %.1f | Target CO2: %d\n", currentCo2, targetCo2);
+    // printf("Current CO2: %.1f | Target CO2: %d\n", currentCo2, targetCo2);
     handleValveAndFanLogic(currentCo2, targetCo2);
   } else {
     printf("[SensorHandler] CO2 read failed.\n");
