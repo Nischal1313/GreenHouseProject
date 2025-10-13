@@ -3,7 +3,6 @@
 //
 
 #include "rotary_encoder.h"
-
 #include <cstdio>
 
 /*
@@ -47,7 +46,6 @@ RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB, const uint pinBut
 
 
 void RotaryEncoder::update() {
-  // ---- ENCODER ROTATION ----
   const int MSB = !gpio_get(pinA);
   const int LSB = !gpio_get(pinB);
   const int encoded = (MSB << 1) | LSB;
@@ -61,7 +59,6 @@ void RotaryEncoder::update() {
     case 0b1011:
       ccwEvent = false;
       cwEvent = true;
-      printf("clock");
       break;
 
     // CCW transitions
@@ -71,7 +68,6 @@ void RotaryEncoder::update() {
     case 0b1000:
       cwEvent = false;
       ccwEvent = true;
-      printf("not clock\n");
       break;
 
     default:
@@ -94,7 +90,6 @@ void RotaryEncoder::update() {
       if (buttonState) {
         // pressed
         pressedEvent = true;
-        printf("Press true.");
         pressStartTime = now;
         heldEvent = false;
       } else {
@@ -107,12 +102,9 @@ void RotaryEncoder::update() {
   if (buttonState && !heldEvent &&
       absolute_time_diff_us(pressStartTime, now) > holdTime * 1000) {
     heldEvent = true;
-    printf("Held true.");
   }
   lastButtonReading = reading;
 }
-
-// --- EVENT ACCESSORS ---
 
 bool RotaryEncoder::rotatedCW() {
   if (cwEvent) {

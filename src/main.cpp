@@ -20,6 +20,7 @@
 #include "setpoint_manager.h"
 #include "setCredentials.h"
 #include "cloud_handler.h"
+#include "ssd1306os.h"
 
 extern "C" {
 uint32_t read_runtime_ctr(void) {
@@ -35,16 +36,6 @@ uint32_t read_runtime_ctr(void) {
     encoder->update();
     vTaskDelay(pdMS_TO_TICKS(5));
   }
-}
-
-// Setpoint update task - reads encoder events ONLY when in MAIN menu
-[[noreturn]] void setpointUpdateTask(void *pvParameters) {
-  auto **params = static_cast<void**>(pvParameters);
-  auto *setpointManager = static_cast<SetpointManager*>(params[0]);
-  auto *displayManager = static_cast<DisplayManager*>(params[1]);
-
-  printf("[SetpointTask] Started\n");
-  vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 
@@ -102,31 +93,28 @@ int main() {
 
   // --- Initialize SetpointManager (shares encoder) ---
   printf("8 - Initializing SetpointManager...\n");
-  auto setpointManager = std::make_shared<SetpointManager>(sensorMutex, eeprom, encoder);
+  // auto setpointManager = std::make_shared<SetpointManager>(sensorMutex, eeprom, encoder);
 
   // --- Initialize SensorHandler ---
   printf("9 - Initializing SensorHandler...\n");
-  auto sensorHandler = std::make_shared<SensorHandler>(
-    setpointManager.get(),
-    sensorMutex
+  auto sensorHandler = std::make_shared<SensorHandler>(sensorMutex, encoder
   );
   printf("   Sensor handler initialized\n");
 
   // --- Initialize Display Manager ---
-  // printf("10 - Initializing Display Manager...\n");
-  // auto displayManager = std::make_shared<DisplayManager>(debug, oLed, encoder);
-  //
-  // // --- Set Display Parameters ---
-  // printf("11 - Setting Display Parameters...\n");
-  // DisplayParams displayParams{
-  //   .sensorHandler = sensorHandler.get(),
-  //   .setpointManager = setpointManager.get(),
-  //   .credentials = credentials.get(),
-  //   .inputManager = inputManager.get(),
-  //   .oLed = oLed.get(),
-  //   .encoder = encoder.get()
-  // };
-  // displayManager->setParams(&displayParams);
+  printf("10 - Initializing Display Manager...\n");
+  auto displayManager = std::make_shared<DisplayManager>(debug, oLed, encoder);
+
+  // --- Set Display Parameters ---
+  printf("11 - Setting Display Parameters...\n");
+  DisplayParams displayParams{
+    .sensorHandler = sensorHandler.get(),
+    .credentials = credentials.get(),
+    .inputManager = inputManager.get(),
+    .oLed = oLed.get(),
+    .encoder = encoder.get()
+  };
+  displayManager->setParams(&displayParams);
 
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
@@ -142,17 +130,6 @@ int main() {
   );
   printf("    - Encoder hardware task created\n");
 
-  // Task 2: Setpoint management (reads encoder events)
-  xTaskCreate(
-    setpointUpdateTask,
-    "SetpointMgr",
-    2048,
-    setpointManager.get(),
-    2, // Priority 2
-    nullptr
-  );
-  printf("    - Setpoint manager task created\n");
-
   // Task 3: Sensor Control
   xTaskCreate(
     SensorHandler::controlTask,
@@ -162,18 +139,18 @@ int main() {
     2, // Priority 2
     nullptr
   );
-  printf("    - Sensor control task created\n");
+  printf("- Sensor control task created\n");
 
-  // // Task 4: Display Update
-  // xTaskCreate(
-  //   DisplayManager::taskEntry,
-  //   "Display",
-  //   8192,
-  //   displayManager.get(),
-  //   1, // Priority 1 (lower - not time critical)
-  //   nullptr
-  // );
-  // printf("    - Display task created\n");
+  // Task 4: Display Update
+  xTaskCreate(
+    DisplayManager::taskEntry,
+    "Display",
+    8192,
+    displayManager.get(),
+    1, // Priority 1 (lower - not time critical)
+    nullptr
+  );
+  printf("    - Display task created\n");
 
   // Task 5: Input Manager (button polling)
   xTaskCreate(

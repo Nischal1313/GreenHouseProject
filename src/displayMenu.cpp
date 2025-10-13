@@ -29,8 +29,7 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
   }
 
   printf("[DisplayManager] Setting params:\n");
-  printf("  - sensorHandler: %p\n", (void *) displayParams->sensorHandler);
-  printf("  - setpointManager: %p\n", (void *) displayParams->setpointManager);
+  printf("  - sensorHandler: %p\n", (void *) displayParams->sensorHandler);;
   printf("  - credentials: %p\n", (void *) displayParams->credentials);
   printf("  - inputManager: %p\n", (void *) displayParams->inputManager);
   printf("  - oLed: %p\n", (void *) displayParams->oLed);
@@ -53,12 +52,11 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
   }
 
   // Verify all components are valid
-  if (!params->sensorHandler || !params->setpointManager ||
+  if (!params->sensorHandler ||
       !params->credentials || !params->inputManager ||
       !params->encoder || !oLed) {
     printf("[DisplayManager] ERROR: One or more components are NULL!\n");
     printf("  sensorHandler: %p\n", (void *) params->sensorHandler);
-    printf("  setpointManager: %p\n", (void *) params->setpointManager);
     printf("  credentials: %p\n", (void *) params->credentials);
     printf("  inputManager: %p\n", (void *) params->inputManager);
     printf("  encoder: %p\n", (void *) params->encoder);
@@ -179,13 +177,9 @@ void DisplayManager::drawMainMenu() const {
   char buf[128];
 
   // Get sensor readings
-  SensorValues readings = params->sensorHandler->getLatestReadings();
+  const SensorValues readings = params->sensorHandler->getReadings();
   printf("[DisplayManager] Sensor readings: CO2=%.0f, Temp=%.1f, Hum=%.1f, Fan=%.0f%%\n",
          readings.co2, readings.temperature, readings.humidity, readings.fanSpeed);
-
-  // Get current setpoint
-  int setpoint = params->setpointManager->getEffectiveTarget();
-  printf("[DisplayManager] Current setpoint: %d ppm\n", setpoint);
 
   // Clear display
   oLed->fill(0);
@@ -194,7 +188,7 @@ void DisplayManager::drawMainMenu() const {
   snprintf(buf, sizeof(buf), "CO2: %.0f ppm", readings.co2);
   oLed->text(buf, 2, 5);
 
-  snprintf(buf, sizeof(buf), "Set: %d ppm", setpoint);
+  snprintf(buf, sizeof(buf), "Set: %d ppm", readings.targetCo2);
   oLed->text(buf, 2, 15);
 
   snprintf(buf, sizeof(buf), "Temp: %.1fC", readings.temperature);

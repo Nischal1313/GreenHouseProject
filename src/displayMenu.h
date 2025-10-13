@@ -22,7 +22,6 @@ enum class MenuState {
 
 struct DisplayParams {
   SensorHandler *sensorHandler;
-  SetpointManager *setpointManager;
   SetCredentials *credentials;
   InputManager *inputManager;
   ssd1306os *oLed;

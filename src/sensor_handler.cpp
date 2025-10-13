@@ -5,9 +5,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-SensorHandler::SensorHandler(SetpointManager *spManager, const SemaphoreHandle_t mutex)
-  : setpointManager(spManager), mutex(mutex) {
-
+SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_ptr<RotaryEncoder> &encoderPtr)
+  : mutex(mutex), encoder(encoderPtr) {
   // Initialize UART for Modbus communication
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
   auto modbusClient = std::make_shared<ModbusClient>(uart);
@@ -19,24 +18,16 @@ SensorHandler::SensorHandler(SetpointManager *spManager, const SemaphoreHandle_t
   valve = std::make_shared<VALVE>();
 }
 
-void SensorHandler::readSensors() {
+SensorValues SensorHandler::getReadings() const {
   SensorValues vals{};
   vals.co2 = gmpSensor->readMeasuredCO2();
   vals.temperature = hmpSensor->readTemperature();
   vals.humidity = hmpSensor->readHumidity();
   vals.fanSpeed = fan->readFanSpeed();
   vals.valveOpen = valve->valveStatus();
-
-  MutexGuard lock(mutex);
-  if (!lock.owns_lock()) return;
-  latestReadings = vals;
+  vals.targetCo2 = targetCo2;
 }
 
-SensorValues SensorHandler::getLatestReadings() const {
-  MutexGuard lock(mutex);
-  if (!lock.owns_lock()) return SensorValues{};
-  return latestReadings;
-}
 
 void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desiredCo2Lvl) const {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
@@ -72,31 +63,39 @@ void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desired
   }
 }
 
-void SensorHandler::updateControl() {
-  // Get current setpoint (handles cloud vs local priority)
-  const int targetCo2 = setpointManager->getEffectiveTarget();
 
-  // Get current CO2 reading
+void SensorHandler::updateFromEncoder() {
+  // Check for encoder rotation events
+  const bool cwRotation = encoder->rotatedCW();
+  const bool ccwRotation = encoder->rotatedCCW();
+
+  if (cwRotation) {
+    targetCo2 = std::min(targetCo2 + 5, static_cast<int>(MAX_CO2));
+  }
+  if (ccwRotation) {
+    targetCo2 = std::max(targetCo2 - 5, static_cast<int>(MIN_CO2));
+  }
+}
+
+
+void SensorHandler::updateControl() const {
+  // Read CO2 sensor
   const float currentCo2 = gmpSensor->readMeasuredCO2();
-
   // Validate reading before controlling
   if (!std::isnan(currentCo2)) {
+    printf("Current CO2: %.1f | Target CO2: %d\n", currentCo2, targetCo2);
     handleValveAndFanLogic(currentCo2, targetCo2);
   } else {
-    printf("SensorHandler: CO2 read failed.\n");
+    printf("[SensorHandler] CO2 read failed.\n");
   }
 }
 
 [[noreturn]] void SensorHandler::controlLoop() {
   while (true) {
-    // Read all sensors
-    readSensors();
-
-    // Update control based on setpoint
+    // getReadings();
     updateControl();
-
-    // Wait before next iteration
-    vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_DELAY));
+    updateFromEncoder();
+    vTaskDelay(pdMS_TO_TICKS(60));
   }
 }
 
