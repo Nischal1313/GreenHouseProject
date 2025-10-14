@@ -39,7 +39,7 @@ uint32_t read_runtime_ctr(void) {
 }
 
 
-int main() {
+[[noreturn]] int main() {
   stdio_init_all();
   // --- I2C setup for OLED (i2c1) ---
   printf("1 - Initializing I2C1 for OLED...\n");
@@ -111,24 +111,24 @@ int main() {
   // --- Set parameters ---
   displayManager.setParams(&displayParams);
 
-
-  // --- Initialize Display Manager ---
+  
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
 
-  xTaskCreate(encoderUpdateTask, "EncoderHW", 1024, encoder.get(), 3, nullptr);
+  xTaskCreate(encoderUpdateTask, "EncoderHW", 1024,
+    encoder.get(), 3, nullptr);
 
-  xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048, sensorHandler.get(), 2, nullptr);
+  xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048,
+    sensorHandler.get(), 2, nullptr);
 
-  xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048, &displayManager, 1, nullptr);
+  xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048,
+    &displayManager, 1, nullptr);
 
-  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024, inputManager.get(), 3, nullptr);
+  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024,
+    inputManager.get(), 3, nullptr);
 
   vTaskStartScheduler();
 
   // Should never reach here
-  printf("ERROR: Scheduler exited!\n");
-  while (true) {
-    tight_loop_contents();
-  }
+  while (true) {}
 }

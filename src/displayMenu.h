@@ -1,54 +1,19 @@
-// #ifndef DISPLAYMENU_H
-// #define DISPLAYMENU_H
-//
-// #include <memory>
-// #include "FreeRTOS.h"
-// #include "task.h"
-// #include "PicoI2C.h"
-// #include "ssd1306os.h"
-// #include "rotary_encoder.h"
-// #include "sensor_handler.h"
-// #include "setCredentials.h"
-// #include "inputManager.h"
-//
-// // Holds references to system components used by DisplayManager
-// struct DisplayParams {
-//   SensorHandler *sensorHandler;
-//   SetCredentials *credentials;
-//   InputManager *inputManager;
-//   ssd1306os *oLed;
-//   RotaryEncoder *encoder;
-// };
-//
-// class DisplayManager {
-// public:
-//   explicit DisplayManager(DisplayParams *params);
-//
-//   static void task_entry(void *param);  // Static entry for FreeRTOS
-//   [[noreturn]] void display_task();     // Instance task
-//
-// private:
-//   DisplayParams *params;
-// };
-//
-// #endif
-
-#ifndef DISPLAYMENU_H
-#define DISPLAYMENU_H
+#ifndef DISPLAY_MENU_H
+#define DISPLAY_MENU_H
 
 #include <memory>
-#include "PicoI2C.h"
-#include "ssd1306os.h"
+#include <cstdio>
+
+#include "debug.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "ssd1306os.h"
 #include "rotary_encoder.h"
-#include "setCredentials.h"
 #include "sensor_handler.h"
-#include "setpoint_manager.h"
-#include "cloud_handler.h"
-#include "debug.h"
+#include "setCredentials.h"
 #include "inputManager.h"
-#include "pico/stdio.h"
+#include "debug.h"
+#include "rotary_encoder.h"
 
 enum class MenuState {
   MAIN,
@@ -60,45 +25,36 @@ struct DisplayParams {
   SetCredentials *credentials;
   InputManager *inputManager;
   ssd1306os *oLed;
-  RotaryEncoder *encoder; // Add encoder back for WiFi menu
+  RotaryEncoder *encoder;
 };
 
 class DisplayManager {
 public:
-  explicit DisplayManager(std::shared_ptr<Debug> debug, std::shared_ptr<ssd1306os> oled,
-                          const std::shared_ptr<RotaryEncoder> &encoderPtr);
-
+  DisplayManager(std::shared_ptr<Debug> debug,
+                 std::shared_ptr<ssd1306os> oled,
+                 const std::shared_ptr<RotaryEncoder> &encoderPtr);
 
   void setParams(DisplayParams *displayParams);
+  static void taskEntry(void *pvParameters);
 
   [[noreturn]] void displayTask();
 
-  static void taskEntry(void *pvParameters);
-
-  // Inside the DisplayManager class declaration
+private:
+  void drawMainMenu() const;
+  void drawWifiMenu();
+  void handleWifiMenuButtons();
+  void changeMenu();
+  void log(const char *fmt, ...) const;
   [[nodiscard]] MenuState getCurrentMenuState() const;
 
-private:
   std::shared_ptr<ssd1306os> oLed;
   std::shared_ptr<Debug> debug;
-  std::shared_ptr<RotaryEncoder> encoder; // For WiFi menu character selection
+  std::shared_ptr<RotaryEncoder> encoder;
 
   DisplayParams *params;
-  int lastWifiEncoderPos; // Track encoder position for WiFi menu
+  int lastWifiEncoderPos;
   bool unsavedChanges;
-  MenuState menuState = MenuState::MAIN;
-
-  void drawMainMenu() const;
-
-  void drawWifiMenu();
-
-  void changeMenu();
-
-  void handleWifiMenuButtons();
-
-  void log(const char *fmt, ...) const;
-
-  static constexpr uint32_t AUTO_SAVE_INTERVAL_MS = 10'000; // 10 seconds
+  MenuState menuState;
 };
 
-#endif
+#endif  // DISPLAY_MENU_H

@@ -1,32 +1,36 @@
-#ifndef INPUT_MANAGER_H
-#define INPUT_MANAGER_H
-
-#include "FreeRTOS.h"
-#include "task.h"
-#include "gpio/gpio_pin.h"
+#pragma once
 #include <memory>
+#include <vector>
+#include "gpio/gpio_pin.h"
+
+// Renamed to avoid collision with SetCredentials::CharsetMode
+enum class InputCharsetMode { CAPITAL, NORMAL, NUMERIC };
 
 class InputManager {
 public:
   InputManager();
 
   static void taskEntry(void *pvParameters);
-  [[noreturn]] void inputTask() const;
 
-  // Edge-triggered events
-  [[nodiscard]] bool getMenuPressEvent() const;
-  [[nodiscard]] bool getNextFieldPressEvent() const;
-  [[nodiscard]] bool getCharsetPressEvent() const;
+  [[noreturn]] void inputTask();
 
-  // Hold events
-  [[nodiscard]] bool getMenuHoldEvent() const;
-  [[nodiscard]] bool getNextFieldHoldEvent() const;
-  [[nodiscard]] bool getCharsetHoldEvent() const;
+  // --- Getters ---
+  [[nodiscard]] bool isMainMenu() const { return mainMenu; }
+  [[nodiscard]] bool isSSIDSelected() const { return ssidSelected; }
+  [[nodiscard]] InputCharsetMode getCharsetMode() const { return charsetModes[currentCharsetIndex]; }
 
 private:
+  // GPIOs
   std::unique_ptr<GPIOPin> menuButton;
   std::unique_ptr<GPIOPin> nextFieldButton;
   std::unique_ptr<GPIOPin> charsetButton;
+
+  // Internal states
+  bool mainMenu;
+  bool ssidSelected;
+
+  std::vector<InputCharsetMode> charsetModes;
+  size_t currentCharsetIndex;
 
   static constexpr uint MENU_PIN = 7;
   static constexpr uint NEXT_FIELD_PIN = 8;
@@ -35,5 +39,3 @@ private:
   static constexpr uint DEBOUNCE_MS = 150;
   static constexpr uint HOLD_MS = 1000;
 };
-
-#endif
