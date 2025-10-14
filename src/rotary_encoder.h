@@ -5,7 +5,8 @@
 class RotaryEncoder {
 public:
   // Constructor
-  explicit RotaryEncoder(uint pinA = 10, uint pinB = 11, uint pinButton = 12,
+  explicit RotaryEncoder(uint pinA = 10, uint pinB = 11,
+                         uint pinButton = 12,
                          uint32_t debounceTime = 5, // ms
                          uint32_t holdTime = 1000); // ms
 

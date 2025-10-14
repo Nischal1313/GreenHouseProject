@@ -5,24 +5,29 @@
 #include "sensor_handler.h"
 #include "setCredentials.h"
 
-CloudClass::CloudClass(const std::shared_ptr<SensorHandler> &sensorHandler,
+CloudClass::CloudClass(
+  const std::shared_ptr<SensorHandler> &sensorHandler,
   const SemaphoreHandle_t eepromMutex, Eeprom &eeprom)
-  : resources(sensorHandler), eeprom(&eeprom), eepromMutex(eepromMutex) {
+  : resources(sensorHandler), eeprom(&eeprom),
+    eepromMutex(eepromMutex) {
   memset(ssid, 0, sizeof(ssid));
   memset(password, 0, sizeof(password));
 }
 
 
 void CloudClass::storeSetpointToEEPROM(const int setpoint) const {
-    const MutexGuard lock(eepromMutex);
-    const uint8_t buf[2] = { static_cast<uint8_t>(setpoint >> 8),
-                             static_cast<uint8_t>(setpoint & 0xFF) };
-    eeprom->writeBlock(EEPROM_CO2_CLOUD_ADDR, buf, 2);
-    printf("[Cloud] Stored new CO2 setpoint %d to EEPROM\n", setpoint);
+  const MutexGuard lock(eepromMutex);
+  const uint8_t buf[2] = {
+    static_cast<uint8_t>(setpoint >> 8),
+    static_cast<uint8_t>(setpoint & 0xFF)
+  };
+  eeprom->writeBlock(EEPROM_CO2_CLOUD_ADDR, buf, 2);
+  printf("[Cloud] Stored new CO2 setpoint %d to EEPROM\n", setpoint);
 }
 
 
-void CloudClass::setCredentials(const char *ssid, const char *password) {
+void CloudClass::setCredentials(const char *ssid,
+                                const char *password) {
   strncpy(this->ssid, ssid, sizeof(this->ssid) - 1);
   strncpy(this->password, password, sizeof(this->password) - 1);
   this->ssid[sizeof(this->ssid) - 1] = '\0';
@@ -30,31 +35,32 @@ void CloudClass::setCredentials(const char *ssid, const char *password) {
 }
 
 void CloudClass::loadCredentialsFromEEPROM() {
-    uint8_t tmp[FIELD_SIZE];
-    const MutexGuard lock(eepromMutex);
+  uint8_t tmp[FIELD_SIZE];
+  const MutexGuard lock(eepromMutex);
 
-    if (!lock.owns_lock()) {
-        printf("[Cloud] Failed to acquire EEPROM mutex\n");
-        return;
-    }
+  if (!lock.owns_lock()) {
+    printf("[Cloud] Failed to acquire EEPROM mutex\n");
+    return;
+  }
 
-    // SSID
-    if (eeprom->readBlock(EEPROM_WIFI_NAME_ADDR, tmp,
-      FIELD_SIZE)) {
-        tmp[FIELD_SIZE - 1] = '\0';
-        strncpy(ssid, reinterpret_cast<char*>(tmp), sizeof(ssid)-1);
-        ssid[sizeof(ssid)-1] = '\0';
-    }
+  // SSID
+  if (eeprom->readBlock(EEPROM_WIFI_NAME_ADDR, tmp,
+                        FIELD_SIZE)) {
+    tmp[FIELD_SIZE - 1] = '\0';
+    strncpy(ssid, reinterpret_cast<char *>(tmp), sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = '\0';
+  }
 
-    // Password
-    if (eeprom->readBlock(EEPROM_WIFI_PASSWD_ADDR, tmp,
-      FIELD_SIZE)) {
-        tmp[FIELD_SIZE - 1] = '\0';
-        strncpy(password, reinterpret_cast<char*>(tmp), sizeof(password)-1);
-        password[sizeof(password)-1] = '\0';
-    }
+  // Password
+  if (eeprom->readBlock(EEPROM_WIFI_PASSWD_ADDR, tmp,
+                        FIELD_SIZE)) {
+    tmp[FIELD_SIZE - 1] = '\0';
+    strncpy(password, reinterpret_cast<char *>(tmp),
+            sizeof(password) - 1);
+    password[sizeof(password) - 1] = '\0';
+  }
 
-    printf("[Cloud] Loaded credentials from EEPROM: SSID=%s\n", ssid);
+  printf("[Cloud] Loaded credentials from EEPROM: SSID=%s\n", ssid);
 }
 
 
@@ -67,7 +73,9 @@ void CloudClass::connect() {
   cyw43_arch_enable_sta_mode();
 
   printf("Connecting to WiFi: %s\n", ssid);
-  if (cyw43_arch_wifi_connect_timeout_ms(ssid, password, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
+  if (cyw43_arch_wifi_connect_timeout_ms(ssid, password,
+                                         CYW43_AUTH_WPA2_AES_PSK,
+                                         30000)) {
     printf("Failed to connect to WiFi\n");
     return;
   }
@@ -104,7 +112,8 @@ void CloudClass::sendData(const int co2, const int temperature,
   char body[256];
   snprintf(body, sizeof(body),
            "api_key=%s&field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&talkback_key=%s",
-           THINGSPEAK_WRITE_API_KEY, co2, humidity, temperature, fanSpeed, co2Setpoint, TALKBACK_API_KEY
+           THINGSPEAK_WRITE_API_KEY, co2, humidity, temperature,
+           fanSpeed, co2Setpoint, TALKBACK_API_KEY
   );
   const int content_length = strlen(body);
 
@@ -121,8 +130,9 @@ void CloudClass::sendData(const int co2, const int temperature,
            content_length, body
   );
 
-  printf("Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
-         co2, temperature, humidity, fanSpeed, co2Setpoint);
+  printf(
+    "Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
+    co2, temperature, humidity, fanSpeed, co2Setpoint);
 
   memset(tls_client_response, 0, sizeof(tls_client_response));
 
@@ -143,7 +153,8 @@ void CloudClass::sendData(const int co2, const int temperature,
 
 int CloudClass::parseTalkBackCommand() {
   // Look for the command_string field in JSON response
-  const char *cmd_start = strstr(tls_client_response, "\"command_string\":\"");
+  const char *cmd_start = strstr(tls_client_response,
+                                 "\"command_string\":\"");
   if (!cmd_start) {
     return -1; // No command found
   }
@@ -187,25 +198,28 @@ void CloudClass::checkTalkBackQueue() {
   memset(tls_client_response, 0, sizeof(tls_client_response));
 
   bool success = run_tls_client_test(
-      reinterpret_cast<const uint8_t *>(root_ca),
-      strlen(root_ca) + 1,
-      TLS_CLIENT_SERVER,
-      request,
-      TLS_CLIENT_TIMEOUT_SECS
+    reinterpret_cast<const uint8_t *>(root_ca),
+    strlen(root_ca) + 1,
+    TLS_CLIENT_SERVER,
+    request,
+    TLS_CLIENT_TIMEOUT_SECS
   );
 
   if (!success) {
-    printf("[Cloud] TalkBack request failed, will retry next cycle.\n");
+    printf(
+      "[Cloud] TalkBack request failed, will retry next cycle.\n");
     return;
   }
 
   const int newSetPoint = parseTalkBackCommand();
 
-  if (newSetPoint <= MAX_CO2_SETPOINT && newSetPoint >= MIN_CO2_SETPOINT) {
+  if (newSetPoint <= MAX_CO2_SETPOINT && newSetPoint >=
+      MIN_CO2_SETPOINT) {
     // call member function on this object
     this->storeSetpointToEEPROM(newSetPoint);
   } else {
-    printf("[Cloud] No valid TalkBack setpoint found (%d)\n", newSetPoint);
+    printf("[Cloud] No valid TalkBack setpoint found (%d)\n",
+           newSetPoint);
   }
 }
 
@@ -242,7 +256,8 @@ void CloudClass::taskEntry(void *pvParameters) {
     // Transmit data if connected
     if (transmit) {
       // Read current sensor values with mutex protection
-      int co2_value, temp_value, humidity_value, fan_speed_value, setpoint_value; {
+      int co2_value, temp_value, humidity_value, fan_speed_value,
+          setpoint_value; {
         // Get all sensor readings in one call
         const SensorValues readings = resources->getReadings();
 
@@ -255,7 +270,8 @@ void CloudClass::taskEntry(void *pvParameters) {
       }
 
       // Send data to ThingSpeak and check for new commands
-      sendData(co2_value, temp_value, humidity_value, fan_speed_value, setpoint_value);
+      sendData(co2_value, temp_value, humidity_value, fan_speed_value,
+               setpoint_value);
 
       // Wait a bit before checking TalkBack (ThingSpeak rate limit)
       vTaskDelay(pdMS_TO_TICKS(5000));

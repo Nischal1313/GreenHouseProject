@@ -12,7 +12,8 @@ extern "C" {
 
 DisplayManager::DisplayManager(std::shared_ptr<Debug> debug,
                                std::shared_ptr<ssd1306os> oled,
-                               const std::shared_ptr<RotaryEncoder> &encoderPtr)
+                               const std::shared_ptr<RotaryEncoder> &
+                               encoderPtr)
   : oLed(std::move(oled)),
     debug(std::move(debug)),
     encoder(encoderPtr),
@@ -28,7 +29,8 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
     printf("[DisplayManager] ERROR: displayParams is NULL!\n");
     return;
   }
-  params = displayParams;}
+  params = displayParams;
+}
 
 MenuState DisplayManager::getCurrentMenuState() const {
   return menuState;
@@ -59,7 +61,8 @@ void DisplayManager::drawMainMenu() const {
   oLed->fill(0);
 
   char buf[128];
-  const auto [temperature, humidity, co2, fanSpeed, valveOpen, targetCo2] =
+  const auto [temperature, humidity, co2, fanSpeed, valveOpen,
+        targetCo2] =
       params->sensorHandler->getReadings();
 
   snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
@@ -77,7 +80,8 @@ void DisplayManager::drawMainMenu() const {
   snprintf(buf, sizeof(buf), "Fan: %.0f%%", fanSpeed);
   oLed->text(buf, 2, 45);
 
-  snprintf(buf, sizeof(buf), "Valve: %s", valveOpen ? "OPEN" : "CLOSED");
+  snprintf(buf, sizeof(buf), "Valve: %s",
+           valveOpen ? "OPEN" : "CLOSED");
   oLed->text(buf, 2, 55);
 
   oLed->show();
@@ -165,11 +169,13 @@ void DisplayManager::handleWifiMenuButtons() {
   }
 
   if (encoder->rotatedCW()) {
-    params->credentials->rotateChar(1); // Move forward through charset
+    params->credentials->rotateChar(1);
+    // Move forward through charset
   }
 
   if (encoder->rotatedCCW()) {
-    params->credentials->rotateChar(-1); // Move backward through charset
+    params->credentials->rotateChar(-1);
+    // Move backward through charset
   }
 
 
@@ -187,9 +193,10 @@ void DisplayManager::handleWifiMenuButtons() {
 }
 
 void DisplayManager::changeMenu() {
-  menuState = (menuState == MenuState::MAIN) ? MenuState::WIFI : MenuState::MAIN;
+  menuState = (menuState == MenuState::MAIN)
+                ? MenuState::WIFI
+                : MenuState::MAIN;
   unsavedChanges = false;
-
 }
 
 void DisplayManager::log(const char *fmt, ...) const {

@@ -35,7 +35,8 @@ public:
 
   void loadCredentialsFromEEPROM();
 
-  static void sendData(int co2, int temperature, int humidity, int fanSpeed, int co2Setpoint);
+  static void sendData(int co2, int temperature, int humidity,
+                       int fanSpeed, int co2Setpoint);
 
   void checkTalkBackQueue();
 
@@ -49,7 +50,8 @@ private:
   static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0500;
   static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0600;
   static constexpr uint16_t FIELD_SIZE = 32;
-  static constexpr uint TASK_DELAY = 60000; // 60 seconds between updates
+  static constexpr uint TASK_DELAY = 60000;
+  // 60 seconds between updates
   static constexpr int MIN_CO2_SETPOINT = 200;
   static constexpr int MAX_CO2_SETPOINT = 15000;
   static constexpr uint16_t EEPROM_CO2_CLOUD_ADDR = 0x0200;
@@ -65,7 +67,9 @@ private:
 
 
 extern "C" {
-bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *server, const char *request, int timeout);
+bool run_tls_client_test(const uint8_t *cert, size_t cert_len,
+                         const char *server, const char *request,
+                         int timeout);
 
 extern char tls_client_response[2048];
 extern const char root_ca[];

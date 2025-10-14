@@ -56,6 +56,7 @@ public:
 
   // FreeRTOS task entry point
   static void controlTask(void *pvParameters);
+
   static constexpr uint16_t EEPROM_CO2_ADDR = 0x10;
   static constexpr uint16_t EEPROM_CO2_CLOUD_ADDR = 0x0200;
 

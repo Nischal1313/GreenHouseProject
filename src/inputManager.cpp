@@ -7,11 +7,19 @@
 InputManager::InputManager()
   : mainMenu(true),
     ssidSelected(true),
-    charsetModes({InputCharsetMode::CAPITAL, InputCharsetMode::NORMAL, InputCharsetMode::NUMERIC}),
+    charsetModes({
+      InputCharsetMode::CAPITAL, InputCharsetMode::NORMAL,
+      InputCharsetMode::NUMERIC
+    }),
     currentCharsetIndex(0) {
-  menuButton = std::make_unique<GPIOPin>(MENU_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
-  nextFieldButton = std::make_unique<GPIOPin>(NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, 200);
-  charsetButton = std::make_unique<GPIOPin>(CHARSET_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
+  menuButton = std::make_unique<GPIOPin>(MENU_PIN, GPIOMode::INPUT,
+                                         GPIOPull::PULLUP, false,
+                                         DEBOUNCE_MS);
+  nextFieldButton = std::make_unique<GPIOPin>(
+    NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, 200);
+  charsetButton = std::make_unique<GPIOPin>(
+    CHARSET_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false,
+    DEBOUNCE_MS);
 
   menuButton->setHoldTime(HOLD_MS);
   nextFieldButton->setHoldTime(HOLD_MS);
@@ -37,7 +45,8 @@ void InputManager::taskEntry(void *pvParameters) {
     }
 
     if (charsetButton->pressed()) {
-      currentCharsetIndex = (currentCharsetIndex + 1) % charsetModes.size();
+      currentCharsetIndex = (currentCharsetIndex + 1) % charsetModes.
+                            size();
     }
 
     vTaskDelay(pdMS_TO_TICKS(30));

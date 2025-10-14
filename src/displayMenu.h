@@ -35,16 +35,22 @@ public:
                  const std::shared_ptr<RotaryEncoder> &encoderPtr);
 
   void setParams(DisplayParams *displayParams);
+
   static void taskEntry(void *pvParameters);
 
   [[noreturn]] void displayTask();
 
 private:
   void drawMainMenu() const;
+
   void drawWifiMenu();
+
   void handleWifiMenuButtons();
+
   void changeMenu();
+
   void log(const char *fmt, ...) const;
+
   [[nodiscard]] MenuState getCurrentMenuState() const;
 
   std::shared_ptr<ssd1306os> oLed;

@@ -40,8 +40,8 @@ add_executable(${ProjectName}
         debug.cpp
 
         displayMenu.cpp
-#        encoderHandler.cpp
-#        displayHandler.cpp
+        #        encoderHandler.cpp
+        #        displayHandler.cpp
         rotary_encoder.cpp
         eeprom/eeprom.cpp
         inputManager.cpp
@@ -53,7 +53,7 @@ add_executable(${ProjectName}
 )
 
 target_include_directories(${ProjectName} PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}
         modbus
         uart
         i2c
@@ -62,8 +62,8 @@ target_include_directories(${ProjectName} PRIVATE
 )
 
 target_compile_definitions(${ProjectName} PRIVATE
-#        WIFI_SSID=\"$ENV{WIFI_SSID}\"
-#        WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
+        #        WIFI_SSID=\"$ENV{WIFI_SSID}\"
+        #        WIFI_PASSWORD=\"$ENV{WIFI_PASSWORD}\"
         WIFI_SSID=""
         WIFI_PASSWORD=""
         NO_SYS=0            # don't want NO_SYS (generally this would be in your lwipopts.h)

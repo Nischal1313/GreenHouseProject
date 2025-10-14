@@ -17,47 +17,48 @@
  */
 class MutexGuard {
 public:
-    explicit MutexGuard(SemaphoreHandle_t m)
-        : mutex(m), locked(false) {
-        if (mutex && xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
-            locked = true;
-        }
+  explicit MutexGuard(SemaphoreHandle_t m)
+    : mutex(m), locked(false) {
+    if (mutex && xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
+      locked = true;
     }
+  }
 
-    // Destructor releases the mutex if locked
-    ~MutexGuard() {
-        if (locked) {
-            xSemaphoreGive(mutex);
-        }
+  // Destructor releases the mutex if locked
+  ~MutexGuard() {
+    if (locked) {
+      xSemaphoreGive(mutex);
     }
+  }
 
-    [[nodiscard]] bool owns_lock() const { return locked; }
+  [[nodiscard]] bool owns_lock() const { return locked; }
 
-    // Non-copyable
-    MutexGuard(const MutexGuard&) = delete;
-    MutexGuard& operator=(const MutexGuard&) = delete;
+  // Non-copyable
+  MutexGuard(const MutexGuard &) = delete;
 
-    // Movable
-    MutexGuard(MutexGuard&& other) noexcept
-        : mutex(other.mutex), locked(other.locked) {
-        other.locked = false;
+  MutexGuard &operator=(const MutexGuard &) = delete;
+
+  // Movable
+  MutexGuard(MutexGuard &&other) noexcept
+    : mutex(other.mutex), locked(other.locked) {
+    other.locked = false;
+  }
+
+  MutexGuard &operator=(MutexGuard &&other) noexcept {
+    if (this != &other) {
+      if (locked) {
+        xSemaphoreGive(mutex);
+      }
+      mutex = other.mutex;
+      locked = other.locked;
+      other.locked = false;
     }
-
-    MutexGuard& operator=(MutexGuard&& other) noexcept {
-        if (this != &other) {
-            if (locked) {
-                xSemaphoreGive(mutex);
-            }
-            mutex = other.mutex;
-            locked = other.locked;
-            other.locked = false;
-        }
-        return *this;
-    }
+    return *this;
+  }
 
 private:
-    SemaphoreHandle_t mutex;
-    bool locked;
+  SemaphoreHandle_t mutex;
+  bool locked;
 };
 
 #endif

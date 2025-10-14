@@ -5,31 +5,37 @@
 #include <memory>
 
 struct DebugEvent {
-    char msg[128];
-    uint32_t timestamp;
+  char msg[128];
+  uint32_t timestamp;
 };
 
 class Debug {
 public:
-    Debug();
-    void print(const char *txt, ...) const;
-    [[nodiscard]] DebugEvent getEvent() const;
+  Debug();
+
+  void print(const char *txt, ...) const;
+
+  [[nodiscard]] DebugEvent getEvent() const;
+
 private:
-    QueueHandle_t m_queue;
+  QueueHandle_t m_queue;
 };
 
 
 class DebugTask {
 public:
-    explicit DebugTask(std::shared_ptr<Debug> debug);
-    [[noreturn]] void run() const;
+  explicit DebugTask(std::shared_ptr<Debug> debug);
+
+  [[noreturn]] void run() const;
+
 private:
-    std::shared_ptr<Debug> m_debug;
+  std::shared_ptr<Debug> m_debug;
 };
 
 
 // void debugInit();
 void debug(const char *txt, ...);
+
 void createQueue();
 
 //extern QueueHandle_t debugQueue;

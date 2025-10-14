@@ -17,7 +17,10 @@ public:
   // --- Getters ---
   [[nodiscard]] bool isMainMenu() const { return mainMenu; }
   [[nodiscard]] bool isSSIDSelected() const { return ssidSelected; }
-  [[nodiscard]] InputCharsetMode getCharsetMode() const { return charsetModes[currentCharsetIndex]; }
+
+  [[nodiscard]] InputCharsetMode getCharsetMode() const {
+    return charsetModes[currentCharsetIndex];
+  }
 
 private:
   // GPIOs

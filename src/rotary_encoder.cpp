@@ -17,8 +17,10 @@
  * against known patterns. This method filters bounce and invalid states.
  */
 
-RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB, const uint pinButton,
-                             const uint32_t debounceTime, const uint32_t holdTime)
+RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB,
+                             const uint pinButton,
+                             const uint32_t debounceTime,
+                             const uint32_t holdTime)
   : pinA(pinA), pinB(pinB), pinButton(pinButton),
 
     lastEncoded(0), cwEvent(false), ccwEvent(false),
@@ -84,7 +86,8 @@ void RotaryEncoder::update() {
   if (reading != lastButtonReading)
     lastDebounceTime = now;
 
-  if (absolute_time_diff_us(lastDebounceTime, now) > debounceTime * 1000) {
+  if (absolute_time_diff_us(lastDebounceTime, now) > debounceTime *
+      1000) {
     if (reading != buttonState) {
       buttonState = reading;
       if (buttonState) {
