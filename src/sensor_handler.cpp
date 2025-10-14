@@ -19,6 +19,7 @@ SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_pt
   hmpSensor = std::make_shared<HMP60>(modbusClient, mutex);
   fan = std::make_shared<ModbusMIO>(modbusClient, mutex);
   valve = std::make_shared<VALVE>();
+  readFromEEPROM();
 }
 
 SensorValues SensorHandler::getReadings() const {

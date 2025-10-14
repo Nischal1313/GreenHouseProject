@@ -77,7 +77,7 @@ private:
   static constexpr uint CONTROL_LOOP_DELAY = 300; // ms
   static constexpr uint16_t MIN_CO2 = 200;
   static constexpr uint16_t MAX_CO2 = 1500;
-  static constexpr uint16_t EEPROM_CO2_ADDR = 0x00;
+  static constexpr uint16_t EEPROM_CO2_ADDR = 0x10;
 
   int targetCo2{};
   mutable uint32_t lastValveActionTime{0};
