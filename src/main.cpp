@@ -55,10 +55,10 @@ uint32_t read_runtime_ctr(void) {
   // --- I2C setup for EEPROM (i2c0) ---
   printf("2 - Initializing I2C0 for EEPROM...\n");
   i2c_init(i2c0, 400'000);
-  gpio_set_function(4, GPIO_FUNC_I2C);
-  gpio_set_function(5, GPIO_FUNC_I2C);
-  gpio_pull_up(4);
-  gpio_pull_up(5);
+  gpio_set_function(16, GPIO_FUNC_I2C);
+  gpio_set_function(17, GPIO_FUNC_I2C);
+  gpio_pull_up(16);
+  gpio_pull_up(17);
   auto eeprom = std::make_shared<Eeprom>(i2c0, 0x50, 2);
   printf("   EEPROM initialized\n");
 
@@ -89,7 +89,7 @@ uint32_t read_runtime_ctr(void) {
   // --- Initialize SensorHandler ---
   printf("9 - Initializing SensorHandler...\n");
   auto sensorHandler = std::make_shared<SensorHandler>(sensorMutex, encoder,
-    eepromMutex, eeprom);
+    eepromMutex, *eeprom);
   printf("   Sensor handler initialized\n");
 
   static DisplayManager displayManager(debug, oLed, encoder);
@@ -127,3 +127,54 @@ uint32_t read_runtime_ctr(void) {
   // Should never reach here
   while (true) {}
 }
+//
+// #include "eeprom/eeprom.h"
+// #include <cstdio>
+// #include <memory>
+// #include "pico/stdlib.h"
+//
+// int main() {
+//   stdio_init_all();
+//
+//   printf("Initializing I2C0 for EEPROM...\n");
+//   i2c_init(i2c0, 400000);
+//   gpio_set_function(16, GPIO_FUNC_I2C);
+//   gpio_set_function(17, GPIO_FUNC_I2C);
+//   gpio_pull_up(16);
+//   gpio_pull_up(17);
+//
+//   auto eeprom = std::make_shared<Eeprom>(i2c0, 0x50, 2);
+//   printf("EEPROM initialized\n");
+//
+//   const uint16_t address = 0x000;
+//   uint16_t value = 222;
+//
+//   printf("EEPROM integer write/read test\n");
+//
+//   while (true) {
+//     // Write value
+//     uint8_t writeBuf[2] = {
+//       static_cast<uint8_t>(value >> 8),
+//       static_cast<uint8_t>(value & 0xFF)
+//   };
+//
+//     if (eeprom->writeBlock(address, writeBuf, 2))
+//       printf("[WRITE] %u\n", value);
+//     else
+//       printf("[WRITE FAILED]\n");
+//
+//     sleep_ms(3000);
+//
+//     // Read value
+//     uint8_t readBuf[2] = {0};
+//     if (eeprom->readBlock(address, readBuf, 2)) {
+//       uint16_t readVal = (readBuf[0] << 8) | readBuf[1];
+//       printf("[READ] %u\n", readVal);
+//     } else {
+//       printf("[READ FAILED]\n");
+//     }
+//
+//     sleep_ms(3000);
+//     value++;
+//   }
+// }

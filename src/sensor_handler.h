@@ -35,14 +35,14 @@ public:
   SensorHandler(SemaphoreHandle_t mutex
                 , const std::shared_ptr<RotaryEncoder> &,
                 SemaphoreHandle_t eepromMutex
-                , const std::shared_ptr<Eeprom> &);
+                , Eeprom &eeprom);
 
   // Read all sensors and update cached values
   SensorValues getReadings() const;
 
   void readFromEEPROM();
 
-  void writeToEEPROM();
+  void writeToEEPROM() const;
 
   // Control valve/fan based on current CO2 vs setpoint
   void updateControl();
@@ -61,9 +61,9 @@ private:
   std::shared_ptr<HMP60> hmpSensor;
   std::shared_ptr<ModbusMIO> fan;
   std::shared_ptr<VALVE> valve;
-  std::shared_ptr<RotaryEncoder> encoder; // Changed to shared_ptr - CRITICAL FIX
-  std::shared_ptr<Eeprom> eeprom; // Changed to shared_ptr - CRITICAL FIX
-
+  std::shared_ptr<RotaryEncoder> encoder;
+  // std::shared_ptr<Eeprom> eeprom;
+  Eeprom *eeprom;
   // Thread safety
   SemaphoreHandle_t mutex;
   SemaphoreHandle_t eepromMutex;
@@ -85,7 +85,7 @@ private:
   mutable uint32_t valveOpenDuration{0};
 
   // Control logic
-  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl);
+  void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) const;
 
   void updateFromEncoder();
 };

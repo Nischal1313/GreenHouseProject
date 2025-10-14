@@ -46,6 +46,7 @@ SetCredentials::SetCredentials(Eeprom& eeprom, const SemaphoreHandle_t eepromMut
 }
 
 void SetCredentials::loadFromEEPROM() {
+    printf("loading[SetCredentials]\n]");
     uint8_t tmp[FIELD_SIZE];
     const MutexGuard lock(eepromMutex);
 
@@ -135,6 +136,7 @@ void SetCredentials::clearCurrentField() {
     auto& buf = currentBuffer();
     if (!buf.empty()) {
         buf.clear();
+        printf("saving[setCredentials]\n]");
         saveFieldToEEPROM(currentField);
     }
 }

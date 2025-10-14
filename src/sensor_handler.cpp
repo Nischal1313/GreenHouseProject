@@ -7,8 +7,8 @@
 #include "eeprom/eeprom.h"
 
 SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_ptr<RotaryEncoder> &encoderPtr,
-                             const SemaphoreHandle_t eepromMutex, const std::shared_ptr<Eeprom> &eepromPtr)
-  : mutex(mutex), encoder(encoderPtr), eepromMutex(eepromMutex), eeprom(eepromPtr) {
+                             const SemaphoreHandle_t eepromMutex, Eeprom& eeprom)
+  : mutex(mutex), encoder(encoderPtr), eepromMutex(eepromMutex), eeprom(&eeprom) {
 
   // Initialize UART for Modbus communication
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
@@ -35,7 +35,6 @@ SensorValues SensorHandler::getReadings() const {
 
 void SensorHandler::readFromEEPROM() {
   const MutexGuard lock(eepromMutex);
-  printf("reading");
   uint8_t buf[2] = {0};
   if (eeprom->readBlock(EEPROM_CO2_ADDR, buf, 2)) {
     targetCo2 = (buf[0] << 8) | buf[1];
@@ -45,22 +44,28 @@ void SensorHandler::readFromEEPROM() {
   }
 }
 
-void SensorHandler::writeToEEPROM() {
-  printf("writing");
+void SensorHandler::writeToEEPROM() const {
+  static absolute_time_t lastWriteTime = {0};
+  const int64_t now = to_ms_since_boot(get_absolute_time());
+  const int64_t elapsed = now - to_ms_since_boot(lastWriteTime);
+
+  // Prevent frequent EEPROM writes; only allow if enough time has passed.
+  if (elapsed < 15'000) return;
 
   const MutexGuard lock(eepromMutex);
-  uint8_t buf[2] = {
+  const uint8_t buf[2] = {
     static_cast<uint8_t>(targetCo2 >> 8),
     static_cast<uint8_t>(targetCo2 & 0xFF)
 };
-  eeprom->writeBlock(EEPROM_CO2_ADDR, buf, 2);
+  if (eeprom->writeBlock(EEPROM_CO2_ADDR, buf, 2))
+    lastWriteTime = get_absolute_time();
 }
 
 
-void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredCo2Lvl) {
+
+void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredCo2Lvl) const {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
   const uint32_t now = to_ms_since_boot(get_absolute_time());
-
   // Handle ongoing valve open period
   if (valveActive) {
     if (now - lastValveActionTime >= valveOpenDuration) {
@@ -85,8 +90,6 @@ void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredC
       // Too low → CO2 injection
       int openTimeMs = (diff * static_cast<int>(MAX_VALVE_OPEN_TIME)) / 1000;
       openTimeMs = std::clamp(openTimeMs, 50, static_cast<int>(MAX_VALVE_OPEN_TIME));
-      writeToEEPROM(); // I think this is a good time to write.
-
       valve->openValve();
       fan->setFanSpeed(IDLE_SPEED);
       valveActive = true;
@@ -116,6 +119,7 @@ void SensorHandler::updateFromEncoder() {
 
 
 void SensorHandler::updateControl() {
+  writeToEEPROM();
   // Read CO2 sensor
   const float currentCo2 = gmpSensor->readMeasuredCO2();
   // Validate reading before controlling
@@ -128,13 +132,6 @@ void SensorHandler::updateControl() {
 }
 
 void SensorHandler::controlLoop() {
-  //Eeprom read would always run before the code for
-  //it had been generated which lead to the code crashing.
-  static bool initialized = false;
-  if (!initialized) {
-    // readFromEEPROM();
-    initialized = true;
-  }
   while (true) {
     updateControl();
     updateFromEncoder();
