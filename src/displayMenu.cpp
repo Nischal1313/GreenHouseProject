@@ -2,6 +2,7 @@ extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
 }
+
 #include "setCredentials.h"
 #include "displayMenu.h"
 #include <cstdarg>
@@ -96,31 +97,33 @@ void DisplayManager::drawWifiMenu() {
 
   char buf[128];
 
-  snprintf(buf, sizeof(buf), "%s", cred->getCurrentFieldName());
-  oLed->text(buf, 2, 0);
+  snprintf(buf, sizeof(buf), "|%s|", cred->getCurrentFieldName());
+  oLed->text(buf, 50, 2);
 
-  snprintf(buf, sizeof(buf), "# %s", cred->getCurrentBuffer());
-  oLed->text(buf, 2, 12);
+  snprintf(buf, sizeof(buf), "%s", cred->getCurrentBuffer());
+  oLed->text(buf, 0, 12);
 
   // Get the current charset mode from SetCredentials (the source of truth)
-  auto mode = cred->getCharsetMode();
+  const auto mode = cred->getCharsetMode();
   const char *charsetName =
-      (mode == CharsetMode::LOWERCASE) ? "abc" :
-      (mode == CharsetMode::UPPERCASE) ? "ABC" :
-      (mode == CharsetMode::NUMBERS) ? "123" : "undef";
-  snprintf(buf, sizeof(buf), "Charset: %s", charsetName);
-  oLed->text(buf, 2, 24);
+      (mode == CharsetMode::LOWERCASE)
+        ? "a b c"
+        : (mode == CharsetMode::UPPERCASE)
+            ? "A B C"
+            : (mode == CharsetMode::NUMBERS)
+                ? "1 % > _ <"
+                : "undef";
+  snprintf(buf, sizeof(buf), "Set: %s", charsetName);
+  oLed->text(buf, 2, 22);
 
   char curChar = cred->getCurrentChar();
-  snprintf(buf, sizeof(buf), "Push: %c", curChar);
-  oLed->text(buf, 2, 36);
-
-  oLed->text("Turn=Char", 2, 48);
+  snprintf(buf, sizeof(buf), "-- > %c", curChar);
+  oLed->text(buf, 55, 32);
 
   if (unsavedChanges)
-    oLed->text("*UNSAVED*", 2, 56);
+    oLed->text("unsaved :[", 50, 56);
   else
-    oLed->text("Saved", 2, 56);
+    oLed->text("Saved :]", 50, 56);
 
   oLed->show();
 }
@@ -165,26 +168,19 @@ void DisplayManager::handleWifiMenuButtons() {
     }
   }
 
-  // FIX #2: Handle rotary encoder for character selection
   if (encoder->rotatedCW()) {
-    params->credentials->rotateChar(1);  // Move forward through charset
-    printf("[DisplayManager] Encoder CW, char=%c\n",
-           params->credentials->getCurrentChar());
+    params->credentials->rotateChar(1); // Move forward through charset
   }
 
   if (encoder->rotatedCCW()) {
-    params->credentials->rotateChar(-1);  // Move backward through charset
-    printf("[DisplayManager] Encoder CCW, char=%c\n",
-           params->credentials->getCurrentChar());
+    params->credentials->rotateChar(-1); // Move backward through charset
   }
 
-  // FIX #2: Handle encoder button press to confirm character
+
   if (encoder->buttonPressed()) {
     char selectedChar = params->credentials->getCurrentChar();
     params->credentials->confirmChar();
-    unsavedChanges = false;  // confirmChar() saves to EEPROM
-    printf("[DisplayManager] Character '%c' confirmed and added to %s\n",
-           selectedChar, params->credentials->getCurrentFieldName());
+    unsavedChanges = false; // confirmChar() saves to EEPROM
   }
 
   // Optional: Handle long-press to delete last character

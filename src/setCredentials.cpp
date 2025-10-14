@@ -148,8 +148,8 @@ const char* SetCredentials::getCurrentBuffer() {
 
 const char* SetCredentials::getCurrentFieldName() const {
     switch (currentField) {
-        case CredentialField::WIFI_NAME: return "SSID";
-        case CredentialField::WIFI_PASSWD: return "Password";
+        case CredentialField::WIFI_NAME: return "ssid";
+        case CredentialField::WIFI_PASSWD: return "passwd";
         default: return "Unknown";
     }
 }
