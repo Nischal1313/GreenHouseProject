@@ -28,9 +28,7 @@ void DisplayManager::setParams(DisplayParams *displayParams) {
     printf("[DisplayManager] ERROR: displayParams is NULL!\n");
     return;
   }
-  params = displayParams;
-  printf("[DisplayManager] Parameters set successfully\n");
-}
+  params = displayParams;}
 
 MenuState DisplayManager::getCurrentMenuState() const {
   return menuState;
@@ -133,7 +131,6 @@ void DisplayManager::handleWifiMenuButtons() {
   bool currentSSIDSelected = params->inputManager->isSSIDSelected();
   if (currentSSIDSelected != prevSSIDSelected) {
     prevSSIDSelected = currentSSIDSelected;
-    printf("[DisplayManager] Next Field button pressed\n");
     params->credentials->nextField();
     unsavedChanges = true;
   }
@@ -161,7 +158,6 @@ void DisplayManager::handleWifiMenuButtons() {
 
   // Only update if the charset has changed
   if (credCharset != targetCharset) {
-    printf("[DisplayManager] Charset mode changed to: %d\n", static_cast<int>(targetCharset));
     // Cycle SetCredentials charset until it matches InputManager's state
     while (params->credentials->getCharsetMode() != targetCharset) {
       params->credentials->nextCharset();
@@ -187,15 +183,13 @@ void DisplayManager::handleWifiMenuButtons() {
   if (encoder->buttonHeld()) {
     params->credentials->clearCurrentField();
     unsavedChanges = false;
-    printf("[DisplayManager] Field cleared via encoder hold\n");
   }
 }
 
 void DisplayManager::changeMenu() {
   menuState = (menuState == MenuState::MAIN) ? MenuState::WIFI : MenuState::MAIN;
   unsavedChanges = false;
-  printf("[DisplayManager] Switched menu to %s\n",
-         menuState == MenuState::MAIN ? "MAIN" : "WIFI");
+
 }
 
 void DisplayManager::log(const char *fmt, ...) const {

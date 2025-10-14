@@ -7,9 +7,8 @@
 #include "eeprom/eeprom.h"
 
 SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_ptr<RotaryEncoder> &encoderPtr,
-                             const SemaphoreHandle_t eepromMutex, Eeprom& eeprom)
+                             const SemaphoreHandle_t eepromMutex, Eeprom &eeprom)
   : mutex(mutex), encoder(encoderPtr), eepromMutex(eepromMutex), eeprom(&eeprom) {
-
   // Initialize UART for Modbus communication
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
   auto modbusClient = std::make_shared<ModbusClient>(uart);
@@ -19,7 +18,7 @@ SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_pt
   hmpSensor = std::make_shared<HMP60>(modbusClient, mutex);
   fan = std::make_shared<ModbusMIO>(modbusClient, mutex);
   valve = std::make_shared<VALVE>();
-  readFromEEPROM();
+  copyValueFromEEPROM(EEPROM_CO2_ADDR, targetCo2);
 }
 
 SensorValues SensorHandler::getReadings() const {
@@ -33,15 +32,23 @@ SensorValues SensorHandler::getReadings() const {
   return vals;
 }
 
-void SensorHandler::readFromEEPROM() {
+void SensorHandler::copyValueFromEEPROM(const uint16_t addr, int &valueToWriteTo) const {
   const MutexGuard lock(eepromMutex);
   uint8_t buf[2] = {0};
-  if (eeprom->readBlock(EEPROM_CO2_ADDR, buf, 2)) {
-    targetCo2 = (buf[0] << 8) | buf[1];
-    targetCo2 = std::clamp(targetCo2, 200, 1500);
+  if (eeprom->readBlock(addr, buf, 2)) {
+    valueToWriteTo = (buf[0] << 8) | buf[1];
+    valueToWriteTo = std::clamp(valueToWriteTo, 200, 1500);
   } else {
-    targetCo2 = 222;
+    valueToWriteTo = 222;
   }
+}
+
+void SensorHandler::emptyCloudValueFromEEPROM() {
+  uint8_t buf[2] = {
+    static_cast<uint8_t>(0 >> 8),
+    static_cast<uint8_t>(0 & 0xFF)
+  };
+  eeprom->writeBlock(EEPROM_CO2_CLOUD_ADDR, buf, 2);
 }
 
 void SensorHandler::writeToEEPROM() const {
@@ -56,14 +63,13 @@ void SensorHandler::writeToEEPROM() const {
   const uint8_t buf[2] = {
     static_cast<uint8_t>(targetCo2 >> 8),
     static_cast<uint8_t>(targetCo2 & 0xFF)
-};
+  };
   if (eeprom->writeBlock(EEPROM_CO2_ADDR, buf, 2))
     lastWriteTime = get_absolute_time();
 }
 
 
-
-void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredCo2Lvl) const {
+void SensorHandler::handleValveAndFanLogic(const float co2Lvl, const int desiredCo2Lvl) const {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
   const uint32_t now = to_ms_since_boot(get_absolute_time());
   // Handle ongoing valve open period
@@ -120,6 +126,13 @@ void SensorHandler::updateFromEncoder() {
 
 void SensorHandler::updateControl() {
   writeToEEPROM();
+  copyValueFromEEPROM(EEPROM_CO2_CLOUD_ADDR, cloudtargetCo2);
+  if (cloudtargetCo2 != 0 && cloudtargetCo2 != 0xFFFF) {
+    targetCo2 = cloudtargetCo2;
+    cloudtargetCo2 = 0;
+    emptyCloudValueFromEEPROM();
+  }
+
   // Read CO2 sensor
   const float currentCo2 = gmpSensor->readMeasuredCO2();
   // Validate reading before controlling

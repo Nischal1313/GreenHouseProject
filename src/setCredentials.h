@@ -50,8 +50,8 @@ public:
     [[nodiscard]] const char* getWifiPassword() const { return buffers[1].c_str(); }
 
 private:
-    static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0100;
-    static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0140;
+    static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0500;
+    static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0600;
     static constexpr uint16_t FIELD_SIZE = 32;
     static constexpr uint MAX_CREDENTIAL_LENGTH = 15;
     static constexpr uint EEPROM_SLEEP_MS = 20;

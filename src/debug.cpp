@@ -38,14 +38,14 @@ DebugTask::DebugTask(std::shared_ptr<Debug> debug): m_debug{std::move(debug)} {
 
 [[noreturn]] void DebugTask::run() const {
     while (true) {
-        DebugEvent e = m_debug->getEvent();
-        printf("[%lu] %s", static_cast<unsigned long>(e.timestamp), e.msg);
+        auto [msg, timestamp] = m_debug->getEvent();
+        printf("[%lu] %s", static_cast<unsigned long>(timestamp), msg);
     }
 }
 
 
 
 void debugTask(void *pvParameters) {
-    auto task = static_cast<DebugTask*>(pvParameters);
+    const auto task = static_cast<DebugTask*>(pvParameters);
     task->run();
 }

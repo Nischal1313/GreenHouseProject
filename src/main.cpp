@@ -21,6 +21,8 @@
 #include "setCredentials.h"
 #include "cloud_handler.h"
 #include "ssd1306os.h"
+#include "cloud_handler.h"
+
 
 extern "C" {
 uint32_t read_runtime_ctr(void) {
@@ -92,6 +94,12 @@ uint32_t read_runtime_ctr(void) {
     eepromMutex, *eeprom);
   printf("   Sensor handler initialized\n");
 
+  // --- Initialize Cloud Handler ---
+  printf("10 - Initializing Cloud Handler...\n");
+  auto cloudHandler = std::make_shared<CloudClass>(sensorHandler, eepromMutex, *eeprom);
+  printf("   Cloud handler initialized\n");
+
+
   static DisplayManager displayManager(debug, oLed, encoder);
 
   // --- Prepare DisplayParams ---
@@ -122,59 +130,11 @@ uint32_t read_runtime_ctr(void) {
   xTaskCreate(InputManager::taskEntry, "InputMgr", 1024,
     inputManager.get(), 3, nullptr);
 
+  xTaskCreate(CloudClass::taskEntry, "Cloud", 1024,
+    cloudHandler.get(), 3, nullptr);
+
   vTaskStartScheduler();
 
   // Should never reach here
   while (true) {}
 }
-//
-// #include "eeprom/eeprom.h"
-// #include <cstdio>
-// #include <memory>
-// #include "pico/stdlib.h"
-//
-// int main() {
-//   stdio_init_all();
-//
-//   printf("Initializing I2C0 for EEPROM...\n");
-//   i2c_init(i2c0, 400000);
-//   gpio_set_function(16, GPIO_FUNC_I2C);
-//   gpio_set_function(17, GPIO_FUNC_I2C);
-//   gpio_pull_up(16);
-//   gpio_pull_up(17);
-//
-//   auto eeprom = std::make_shared<Eeprom>(i2c0, 0x50, 2);
-//   printf("EEPROM initialized\n");
-//
-//   const uint16_t address = 0x000;
-//   uint16_t value = 222;
-//
-//   printf("EEPROM integer write/read test\n");
-//
-//   while (true) {
-//     // Write value
-//     uint8_t writeBuf[2] = {
-//       static_cast<uint8_t>(value >> 8),
-//       static_cast<uint8_t>(value & 0xFF)
-//   };
-//
-//     if (eeprom->writeBlock(address, writeBuf, 2))
-//       printf("[WRITE] %u\n", value);
-//     else
-//       printf("[WRITE FAILED]\n");
-//
-//     sleep_ms(3000);
-//
-//     // Read value
-//     uint8_t readBuf[2] = {0};
-//     if (eeprom->readBlock(address, readBuf, 2)) {
-//       uint16_t readVal = (readBuf[0] << 8) | readBuf[1];
-//       printf("[READ] %u\n", readVal);
-//     } else {
-//       printf("[READ FAILED]\n");
-//     }
-//
-//     sleep_ms(3000);
-//     value++;
-//   }
-// }

@@ -39,14 +39,77 @@ SetCredentials::SetCredentials(Eeprom& eeprom, const SemaphoreHandle_t eepromMut
 {
     charsets[0] = "abcdefghijklmnopqrstuvwxyz";
     charsets[1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    charsets[2] = "0123456789-/?+:.<>|#!%()[]{}";
+    charsets[2] = "0123456789,-/?+:.<>|#!%()[]{}";
     buffers[0].clear();
     buffers[1].clear();
     loadFromEEPROM();
 }
+//
+// void SetCredentials::loadFromEEPROM() {
+//     printf("loading[SetCredentials]\n]");
+//     uint8_t tmp[FIELD_SIZE];
+//     const MutexGuard lock(eepromMutex);
+//
+//     if (!lock.owns_lock()) {
+//         debugLog("[EEPROM] Mutex acquisition failed during load.\n");
+//         return;
+//     }
+//
+//     auto loadField = [&](const CredentialField field, const uint16_t address, const int index) {
+//         if (!eeprom.readBlock(address, tmp, FIELD_SIZE)) {
+//             debugLog("[EEPROM] ✗ Failed to read %s\n",
+//                      field == CredentialField::WIFI_NAME ? "SSID" : "Password");
+//             buffers[index].clear();
+//             return;
+//         }
+//
+//         if (!CredentialValidator::isValidString(tmp, FIELD_SIZE, FIELD_SIZE)) {
+//             debugLog("[EEPROM] ✗ Invalid string in %s\n",
+//                      field == CredentialField::WIFI_NAME ? "SSID" : "Password");
+//             buffers[index].clear();
+//             return;
+//         }
+//
+//         tmp[FIELD_SIZE - 1] = '\0';
+//         buffers[index] = reinterpret_cast<char*>(tmp);
+//         if (buffers[index].size() > MAX_CREDENTIAL_LENGTH)
+//             buffers[index] = buffers[index].substr(0, MAX_CREDENTIAL_LENGTH);
+//     };
+//
+//     loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
+//     loadField(CredentialField::WIFI_PASSWD, EEPROM_WIFI_PASSWD_ADDR, 1);
+//     printf("[loading]%d, %d\n", static_cast<int>(CredentialField::WIFI_PASSWD),
+//                                  static_cast<int>(CredentialField::WIFI_NAME));
+//
+// }
+//
+// void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
+//     const uint16_t offset = (field == CredentialField::WIFI_NAME)
+//         ? EEPROM_WIFI_NAME_ADDR
+//         : EEPROM_WIFI_PASSWD_ADDR;
+//
+//     const auto& buf = buffers[static_cast<int>(field)];
+//     MutexGuard lock(eepromMutex);
+//
+//     if (!lock.owns_lock()) {
+//         debugLog("[EEPROM-setCreds] ✗ Mutex acquisition failed on save.\n");
+//         return;
+//     }
+//
+//     uint8_t writeData[FIELD_SIZE]{0};
+//     const size_t len = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
+//     memcpy(writeData, buf.c_str(), len);
+//
+//     if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE))
+//         debugLog("[EEPROM] ✗ Write failed for field %d\n", static_cast<int>(field));
+//     printf("[saving]%d, %d\n", static_cast<int>(CredentialField::WIFI_PASSWD),
+//                              static_cast<int>(CredentialField::WIFI_NAME));
+//
+//
+// }
 
 void SetCredentials::loadFromEEPROM() {
-    printf("loading[SetCredentials]\n]");
+    printf("loading[SetCredentials]\n");
     uint8_t tmp[FIELD_SIZE];
     const MutexGuard lock(eepromMutex);
 
@@ -56,24 +119,35 @@ void SetCredentials::loadFromEEPROM() {
     }
 
     auto loadField = [&](const CredentialField field, const uint16_t address, const int index) {
+        printf("[EEPROM] Loading field %s from address 0x%04X\n",
+               field == CredentialField::WIFI_NAME ? "SSID" : "Password",
+               address);
+
         if (!eeprom.readBlock(address, tmp, FIELD_SIZE)) {
-            debugLog("[EEPROM] ✗ Failed to read %s\n",
-                     field == CredentialField::WIFI_NAME ? "SSID" : "Password");
+            printf("[EEPROM] ✗ Failed to read field at 0x%04X\n", address);
             buffers[index].clear();
             return;
         }
 
+        printf("[EEPROM] Raw bytes: ");
+        for (size_t i = 0; i < FIELD_SIZE; i++) {
+            printf("%02X ", tmp[i]);
+        }
+        printf("\n");
+
         if (!CredentialValidator::isValidString(tmp, FIELD_SIZE, FIELD_SIZE)) {
-            debugLog("[EEPROM] ✗ Invalid string in %s\n",
-                     field == CredentialField::WIFI_NAME ? "SSID" : "Password");
+            printf("[EEPROM] ✗ Invalid string in field %s\n",
+                   field == CredentialField::WIFI_NAME ? "SSID" : "Password");
             buffers[index].clear();
             return;
         }
 
         tmp[FIELD_SIZE - 1] = '\0';
-        buffers[index] = reinterpret_cast<char*>(tmp);
+        buffers[index] = std::string(reinterpret_cast<char*>(tmp));
         if (buffers[index].size() > MAX_CREDENTIAL_LENGTH)
             buffers[index] = buffers[index].substr(0, MAX_CREDENTIAL_LENGTH);
+
+        printf("[EEPROM] Loaded '%s'\n", buffers[index].c_str());
     };
 
     loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
@@ -97,9 +171,23 @@ void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
     const size_t len = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
     memcpy(writeData, buf.c_str(), len);
 
+    printf("[EEPROM] Saving field %s to address 0x%04X, data: ",
+           field == CredentialField::WIFI_NAME ? "SSID" : "Password",
+           offset);
+    for (size_t i = 0; i < FIELD_SIZE; i++) {
+        printf("%02X ", writeData[i]);
+    }
+    printf("\n");
+
     if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE))
-        debugLog("[EEPROM] ✗ Write failed for field %d\n", static_cast<int>(field));
+        printf("[EEPROM] ✗ Write failed for field %s at 0x%04X\n",
+               field == CredentialField::WIFI_NAME ? "SSID" : "Password",
+               offset);
+    else
+        printf("[EEPROM] Write OK for field %s\n",
+               field == CredentialField::WIFI_NAME ? "SSID" : "Password");
 }
+
 
 char SetCredentials::getCurrentChar() const {
     const auto& cs = charsets[static_cast<int>(charsetMode)];
@@ -136,7 +224,6 @@ void SetCredentials::clearCurrentField() {
     auto& buf = currentBuffer();
     if (!buf.empty()) {
         buf.clear();
-        printf("saving[setCredentials]\n]");
         saveFieldToEEPROM(currentField);
     }
 }
@@ -163,6 +250,7 @@ void SetCredentials::nextField() {
 }
 
 void SetCredentials::nextCharset() {
+    loadFromEEPROM();
     charsetMode = static_cast<CharsetMode>((static_cast<int>(charsetMode) + 1) % 3);
     currentCharIndex = 0;
 }

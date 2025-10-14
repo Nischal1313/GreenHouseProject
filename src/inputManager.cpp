@@ -16,9 +16,6 @@ InputManager::InputManager()
   menuButton->setHoldTime(HOLD_MS);
   nextFieldButton->setHoldTime(HOLD_MS);
   charsetButton->setHoldTime(HOLD_MS);
-
-  printf("[InputManager] Initialized. MENU=%u, NEXT=%u, CHAR=%u\n",
-         MENU_PIN, NEXT_FIELD_PIN, CHARSET_PIN);
 }
 
 void InputManager::taskEntry(void *pvParameters) {
@@ -26,7 +23,6 @@ void InputManager::taskEntry(void *pvParameters) {
 }
 
 [[noreturn]] void InputManager::inputTask() {
-  printf("[InputManager] Task started\n");
   while (true) {
     menuButton->update();
     nextFieldButton->update();
@@ -34,17 +30,14 @@ void InputManager::taskEntry(void *pvParameters) {
 
     if (menuButton->pressed()) {
       mainMenu = !mainMenu;
-      printf("[InputManager] mainMenu toggled -> %d\n", mainMenu);
     }
 
     if (nextFieldButton->pressed()) {
       ssidSelected = !ssidSelected;
-      printf("[InputManager] ssidSelected toggled -> %d\n", ssidSelected);
     }
 
     if (charsetButton->pressed()) {
       currentCharsetIndex = (currentCharsetIndex + 1) % charsetModes.size();
-      printf("[InputManager] Charset cycled -> %zu\n", currentCharsetIndex);
     }
 
     vTaskDelay(pdMS_TO_TICKS(30));

@@ -241,3 +241,33 @@ bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *serve
     altcp_tls_free_config(tls_config);
     return err == 0;
 }
+
+// ============================================================================
+// Global TLS variables for ThingSpeak / HTTPS requests
+// ============================================================================
+
+// Response buffer (used by run_tls_client_test and cloud_handler)
+char tls_client_response[2048];
+
+// Root CA certificate for api.thingspeak.com (Amazon Root CA 1)
+const char root_ca[] =
+"-----BEGIN CERTIFICATE-----\n"
+"MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF\n"
+"ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6\n"
+"b24gUm9vdCBDQSAxMB4XDTExMDIxMjAwMDAwMFoXDTM5MTIzMTIzNTk1OVowOTEL\n"
+"MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv\n"
+"b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALwDaQkM6ECF\n"
+"m+J8UqgD5aPq4lOK3yKddrdztzD8ix8qO6V8UghYbNvD0Z8VKxXzE7t3Eo4wxIhX\n"
+"QAGKx9e1Fj0dxz4J1TxRe+VY6qzY4k7RwlHk2eZ0zQ4ROmu+EMB+qVhjP0+lXKpT\n"
+"nK7xj+Ubv9kRkSbtf0jcl+H4R68FV/H2m2C1Q3Z1z0zQOYqav4PzoKzGozA6J0T0\n"
+"0G9vnjNjaT9JKfH1sxQ1q0x6s+JWu1Wj6a+upYjF8hHk/hx8m5qVcfuZ8O6q3K/Y\n"
+"t5ek/jexxD5X+oElhYQgJQ3H82Rb7Dn8uF3MBS5Y9xLw1mW4BLUfrxzJYcZ8J9PR\n"
+"g1jMUaO+gn8CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUK9TR\n"
+"4L8C7jqdPjd5P5umgwywXDUwDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUA\n"
+"A4IBAQBLVQmIMKj2kB+awgaqE6xkXkG1PbQ5i3h0aoyS+9g7p2b+zHkLwbXBRCAJ\n"
+"fS2bXyH8BGFBR9rnGzDe9lEddYj0XKx2pDD7Z6FHYh0kds6TkISaUh2uZd80WInA\n"
+"yqUuL3WUk6o5qSPk0nC6I4r3s3POZ+4tO8phufQ/H99/txS2i8Gl3cEw1bdIKpMh\n"
+"bF8gz5C3rW4znvL+3r4K8P5k2Aq1wCfsH7O3QFlu3hTrdxg5RE9X3ToVJZW9njsV\n"
+"6NROzUP7wp3ULg0NlddM4EcbmgSizHcooR4vFv8rxuU3RQqY08b0v5FYvysG+5WJ\n"
+"0adqTdD1/o0dVv6b3TmbVN2+LDW8\n"
+"-----END CERTIFICATE-----\n";

@@ -1,252 +1,269 @@
-#include "cloud_handler.h"
-#include "pico/cyw43_arch.h"
-#include <cstdio>
+#include <string>
 #include <cstring>
-#include <sstream>
+#include <cstdio>
+#include "cloud_handler.h"
+#include "sensor_handler.h"
+#include "setCredentials.h"
 
-// Static members for response handling
-char CloudHandler::lastResponse[2048] = {0};
-int CloudHandler::lastSetpoint = -1;
-
-CloudHandler::CloudHandler(SensorHandler* sensorHandler,
-                           SetpointManager* setpointManager,
-                           SetCredentials* credentials)
-    : sensorHandler(sensorHandler),
-      setpointManager(setpointManager),
-      credentials(credentials),
-      updateIntervalMs(15000),
-      writeApiKey("1WWH2NWXSM53URR5"),      // Your write API key
-      talkbackApiKey("371DAWENQKI6J8DD"),   // Your talkback API key
-      talkbackId("52920")                    // Your talkback ID
-{
-    // Could load API keys from EEPROM via credentials if needed
+CloudClass::CloudClass(const std::shared_ptr<SensorHandler> &sensorHandler,
+  const SemaphoreHandle_t eepromMutex, Eeprom &eeprom)
+  : resources(sensorHandler), eeprom(&eeprom), eepromMutex(eepromMutex) {
+  memset(ssid, 0, sizeof(ssid));
+  memset(password, 0, sizeof(password));
 }
 
-void CloudHandler::setResponseCallback(std::function<void(const char*)> callback) {
-    responseCallback = callback;
+
+void CloudClass::storeSetpointToEEPROM(const int setpoint) const {
+    const MutexGuard lock(eepromMutex);
+    const uint8_t buf[2] = { static_cast<uint8_t>(setpoint >> 8),
+                             static_cast<uint8_t>(setpoint & 0xFF) };
+    eeprom->writeBlock(EEPROM_CO2_CLOUD_ADDR, buf, 2);
+    printf("[Cloud] Stored new CO2 setpoint %d to EEPROM\n", setpoint);
 }
 
-bool CloudHandler::connectWiFi() {
-    // Check if already initialized
-    static bool initialized = false;
 
-    if (!initialized) {
-        if (cyw43_arch_init()) {
-            printf("[CloudHandler] Failed to init CYW43\n");
-            return false;
-        }
-        cyw43_arch_enable_sta_mode();
-        initialized = true;
+void CloudClass::setCredentials(const char *ssid, const char *password) {
+  strncpy(this->ssid, ssid, sizeof(this->ssid) - 1);
+  strncpy(this->password, password, sizeof(this->password) - 1);
+  this->ssid[sizeof(this->ssid) - 1] = '\0';
+  this->password[sizeof(this->password) - 1] = '\0';
+}
+
+void CloudClass::loadCredentialsFromEEPROM() {
+    uint8_t tmp[FIELD_SIZE];
+    const MutexGuard lock(eepromMutex);
+
+    if (!lock.owns_lock()) {
+        printf("[Cloud] Failed to acquire EEPROM mutex\n");
+        return;
     }
 
-    // Get credentials
-    const char* ssid = credentials->getWifiSSID();
-    const char* password = credentials->getWifiPassword();
-
-    printf("[CloudHandler] Connecting to '%s'...\n", ssid);
-
-    if (cyw43_arch_wifi_connect_timeout_ms(ssid, password,
-                                           CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        printf("[CloudHandler] Failed to connect to WiFi\n");
-        return false;
+    // SSID
+    if (eeprom->readBlock(EEPROM_WIFI_NAME_ADDR, tmp,
+      FIELD_SIZE)) {
+        tmp[FIELD_SIZE - 1] = '\0';
+        strncpy(ssid, reinterpret_cast<char*>(tmp), sizeof(ssid)-1);
+        ssid[sizeof(ssid)-1] = '\0';
     }
 
-    printf("[CloudHandler] WiFi connected!\n");
-    return true;
-}
-
-std::string CloudHandler::buildUpdateRequest(float co2, float temp, float hum,
-                                             float fan, int setpoint) {
-    std::ostringstream oss;
-
-    // Build POST request to update ThingSpeak fields AND execute TalkBack
-    oss << "POST /update.json HTTP/1.1\r\n"
-        << "Host: api.thingspeak.com\r\n"
-        << "Content-Type: application/x-www-form-urlencoded\r\n"
-        << "Content-Length: ";
-
-    // Build body first to calculate content length
-    std::ostringstream body;
-    body << "field1=" << static_cast<int>(co2)
-         << "&field2=" << static_cast<int>(temp)
-         << "&field3=" << static_cast<int>(hum)
-         << "&field4=" << static_cast<int>(fan)
-         << "&field5=" << setpoint
-         << "&api_key=" << writeApiKey
-         << "&talkback_key=" << talkbackApiKey;
-
-    std::string bodyStr = body.str();
-
-    oss << bodyStr.length() << "\r\n"
-        << "\r\n"
-        << bodyStr;
-
-    return oss.str();
-}
-
-std::string CloudHandler::buildTalkBackRequest() {
-    std::ostringstream oss;
-
-    // Execute (get and remove) next command from TalkBack queue
-    oss << "POST /talkbacks/" << talkbackId << "/commands/execute.json HTTP/1.1\r\n"
-        << "Host: api.thingspeak.com\r\n"
-        << "Content-Type: application/x-www-form-urlencoded\r\n";
-
-    std::string body = "api_key=" + talkbackApiKey;
-
-    oss << "Content-Length: " << body.length() << "\r\n"
-        << "\r\n"
-        << body;
-
-    return oss.str();
-}
-
-int CloudHandler::parseSetpointFromResponse(const char* response) {
-    if (!response) return -1;
-
-    // Look for "command_string" field in JSON response
-    // Example: {"command_string":"SETPOINT=850", ...}
-    const char* cmdStr = strstr(response, "\"command_string\"");
-    if (!cmdStr) {
-        printf("[CloudHandler] No command_string found in response\n");
-        return -1;
+    // Password
+    if (eeprom->readBlock(EEPROM_WIFI_PASSWD_ADDR, tmp,
+      FIELD_SIZE)) {
+        tmp[FIELD_SIZE - 1] = '\0';
+        strncpy(password, reinterpret_cast<char*>(tmp), sizeof(password)-1);
+        password[sizeof(password)-1] = '\0';
     }
 
-    // Look for SETPOINT= pattern
-    const char* setpointStr = strstr(cmdStr, "SETPOINT=");
-    if (!setpointStr) {
-        printf("[CloudHandler] No SETPOINT= found in command\n");
-        return -1;
-    }
-
-    // Parse the number after SETPOINT=
-    int value = 0;
-    if (sscanf(setpointStr, "SETPOINT=%d", &value) == 1) {
-        if (value >= 400 && value <= 2000) {
-            printf("[CloudHandler] Parsed setpoint: %d ppm\n", value);
-            return value;
-        } else {
-            printf("[CloudHandler] Setpoint out of range: %d\n", value);
-        }
-    }
-
-    return -1;
+    printf("[Cloud] Loaded credentials from EEPROM: SSID=%s\n", ssid);
 }
 
-bool CloudHandler::sendSensorData() {
-    // Get latest sensor readings
-    SensorValues readings = sensorHandler->getLatestReadings();
-    int currentSetpoint = setpointManager->getEffectiveTarget();
 
-    printf("[CloudHandler] Sending: CO2=%.0f, Temp=%.1f, Hum=%.1f, Fan=%.0f, SP=%d\n",
-           readings.co2, readings.temperature, readings.humidity,
-           readings.fanSpeed, currentSetpoint);
+void CloudClass::connect() {
+  if (cyw43_arch_init()) {
+    printf("Failed to initialize WiFi\n");
+    return;
+  }
 
-    // Build request
-    std::string request = buildUpdateRequest(
-        readings.co2,
-        readings.temperature,
-        readings.humidity,
-        readings.fanSpeed,
-        currentSetpoint
-    );
+  cyw43_arch_enable_sta_mode();
 
-    // Send via TLS
-    bool success = run_tls_client_test(
-        nullptr,                        // No certificate (VERIFY_OPTIONAL)
-        0,
-        "api.thingspeak.com",
-        request.c_str(),
-        15                              // 15 second timeout
-    );
+  printf("Connecting to WiFi: %s\n", ssid);
+  if (cyw43_arch_wifi_connect_timeout_ms(ssid, password, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
+    printf("Failed to connect to WiFi\n");
+    return;
+  }
 
-    if (success) {
-        printf("[CloudHandler] Data sent successfully\n");
+  printf("WiFi connected successfully\n");
+}
+
+void CloudClass::sendData(const int co2, const int temperature,
+                          const int humidity, const int fanSpeed,
+                          const int co2Setpoint) {
+  char request[512];
+
+  // Build POST request with all 5 fields and TalkBack key
+  snprintf(request, sizeof(request),
+           "POST /update.json HTTP/1.1\r\n"
+           "Host: api.thingspeak.com\r\n"
+           "User-Agent: PicoW\r\n"
+           "Content-Type: application/x-www-form-urlencoded\r\n"
+           "Connection: close\r\n"
+           "Content-Length: %d\r\n"
+           "\r\n"
+           "api_key=%s&field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&talkback_key=%s",
+           0, // Content-Length placeholder
+           THINGSPEAK_WRITE_API_KEY,
+           co2, // field1: CO2 level (ppm)
+           humidity, // field2: Relative humidity
+           temperature, // field3: Temperature
+           fanSpeed, // field4: Fan speed (0-100%)
+           co2Setpoint, // field5: CO2 setpoint (ppm)
+           TALKBACK_API_KEY
+  );
+
+  // Calculate actual content length
+  char body[256];
+  snprintf(body, sizeof(body),
+           "api_key=%s&field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&talkback_key=%s",
+           THINGSPEAK_WRITE_API_KEY, co2, humidity, temperature, fanSpeed, co2Setpoint, TALKBACK_API_KEY
+  );
+  const int content_length = strlen(body);
+
+  // Rebuild with correct content length
+  snprintf(request, sizeof(request),
+           "POST /update.json HTTP/1.1\r\n"
+           "Host: api.thingspeak.com\r\n"
+           "User-Agent: PicoW\r\n"
+           "Content-Type: application/x-www-form-urlencoded\r\n"
+           "Connection: close\r\n"
+           "Content-Length: %d\r\n"
+           "\r\n"
+           "%s",
+           content_length, body
+  );
+
+  printf("Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
+         co2, temperature, humidity, fanSpeed, co2Setpoint);
+
+  memset(tls_client_response, 0, sizeof(tls_client_response));
+
+  const bool success = run_tls_client_test(
+    reinterpret_cast<const uint8_t *>(root_ca),
+    strlen(root_ca) + 1,
+    TLS_CLIENT_SERVER,
+    request,
+    TLS_CLIENT_TIMEOUT_SECS
+  );
+
+  if (success) {
+    printf("Data sent successfully to ThingSpeak\n");
+  } else {
+    printf("Failed to send data to ThingSpeak\n");
+  }
+}
+
+int CloudClass::parseTalkBackCommand() {
+  // Look for the command_string field in JSON response
+  const char *cmd_start = strstr(tls_client_response, "\"command_string\":\"");
+  if (!cmd_start) {
+    return -1; // No command found
+  }
+
+  cmd_start += strlen("\"command_string\":\"");
+
+  // Extract command string
+  char cmd[64];
+  int i = 0;
+  while (*cmd_start && *cmd_start != '"' && i < 63) {
+    cmd[i++] = *cmd_start++;
+  }
+  cmd[i] = '\0';
+
+  printf("TalkBack command received: %s\n", cmd);
+
+  // Parse SETPOINT=<value> command
+  if (strncmp(cmd, "SETPOINT=", 9) == 0) {
+    int value = atoi(cmd + 9);
+    if (value >= MIN_CO2_SETPOINT && value <= MAX_CO2_SETPOINT) {
+      return value;
     } else {
-        printf("[CloudHandler] Failed to send data\n");
+      printf("CO2 setpoint %d out of valid range (%d-%d)\n",
+             value, MIN_CO2_SETPOINT, MAX_CO2_SETPOINT);
     }
+  }
 
-    return success;
+  return -1; // Invalid or out of range
 }
 
-bool CloudHandler::fetchCloudSetpoint() {
-    printf("[CloudHandler] Fetching cloud setpoint...\n");
+void CloudClass::checkTalkBackQueue() {
+  char request[256];
 
-    // Build TalkBack request
-    std::string request = buildTalkBackRequest();
+  snprintf(request, sizeof(request),
+           "GET /talkbacks/%s/commands/execute.json?api_key=%s HTTP/1.1\r\n"
+           "Host: api.thingspeak.com\r\n"
+           "User-Agent: PicoW\r\n"
+           "Connection: close\r\n\r\n",
+           TALKBACK_ID, TALKBACK_API_KEY);
 
-    // Send via TLS
-    bool success = run_tls_client_test(
-        nullptr,
-        0,
-        "api.thingspeak.com",
-        request.c_str(),
-        15
-    );
+  memset(tls_client_response, 0, sizeof(tls_client_response));
 
-    if (!success) {
-        printf("[CloudHandler] Failed to fetch setpoint\n");
-        return false;
-    }
+  bool success = run_tls_client_test(
+      reinterpret_cast<const uint8_t *>(root_ca),
+      strlen(root_ca) + 1,
+      TLS_CLIENT_SERVER,
+      request,
+      TLS_CLIENT_TIMEOUT_SECS
+  );
 
-    // Get parsed setpoint from response handler
-    int newSetpoint = get_co2_setpoint();
+  if (!success) {
+    printf("[Cloud] TalkBack request failed, will retry next cycle.\n");
+    return;
+  }
 
-    if (newSetpoint > 0) {
-        printf("[CloudHandler] Cloud setpoint received: %d ppm\n", newSetpoint);
-        setpointManager->updateCloud(newSetpoint);
-        return true;
-    } else {
-        printf("[CloudHandler] No new setpoint in cloud response\n");
-        return false;
-    }
+  const int newSetPoint = parseTalkBackCommand();
+
+  if (newSetPoint <= MAX_CO2_SETPOINT && newSetPoint >= MIN_CO2_SETPOINT) {
+    // call member function on this object
+    this->storeSetpointToEEPROM(newSetPoint);
+  } else {
+    printf("[Cloud] No valid TalkBack setpoint found (%d)\n", newSetPoint);
+  }
 }
 
-[[noreturn]] void CloudHandler::cloudTask() {
-    printf("[CloudHandler] Task started\n");
 
-    // Wait a bit for system to stabilize
-    vTaskDelay(pdMS_TO_TICKS(5000));
+void CloudClass::taskEntry(void *pvParameters) {
+  auto *self = static_cast<CloudClass *>(pvParameters);
+  self->Cloudtask();
+}
 
-    while (true) {
-        // Connect to WiFi
-        if (!connectWiFi()) {
-            printf("[CloudHandler] WiFi connection failed, retrying in 30s\n");
-            vTaskDelay(pdMS_TO_TICKS(30000));
-            continue;
-        }
+[[noreturn]] void CloudClass::Cloudtask() {
+  printf("cloud task ran");
+  bool network_connected = false;
 
-        // Send sensor data to cloud
-        sendSensorData();
+  printf("CloudTask started\n");
 
-        // Small delay between requests
-        vTaskDelay(pdMS_TO_TICKS(2000));
-
-        // Fetch setpoint from cloud
-        fetchCloudSetpoint();
-
-        // Wait before next update cycle
-        printf("[CloudHandler] Sleeping for %lu ms\n", updateIntervalMs);
-        vTaskDelay(pdMS_TO_TICKS(updateIntervalMs));
+  while (true) {
+    if (ssid[0] == '\0') {
+      loadCredentialsFromEEPROM();
+      if (ssid[0] == '\0') {
+        printf("Waiting for WiFi credentials in EEPROM...\n");
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        continue;
+      }
     }
-}
 
-void CloudHandler::taskEntry(void* pvParameters) {
-    auto* self = static_cast<CloudHandler*>(pvParameters);
-    self->cloudTask();
-}
 
-void CloudHandler::startTask(uint32_t intervalMs) {
-    updateIntervalMs = intervalMs;
+    if (!network_connected) {
+      printf("Connecting to WiFi...\n");
+      connect();
+      network_connected = true;
+      transmit = true;
+    }
 
-    xTaskCreate(
-        taskEntry,
-        "CloudHandler",
-        4096,                // Stack size
-        this,
-        1,                   // Priority (low)
-        nullptr
-    );
+    // Transmit data if connected
+    if (transmit) {
+      // Read current sensor values with mutex protection
+      int co2_value, temp_value, humidity_value, fan_speed_value, setpoint_value; {
+        // Get all sensor readings in one call
+        const SensorValues readings = resources->getReadings();
 
-    printf("[CloudHandler] Task created with %lu ms interval\n", intervalMs);
+        // Extract individual values and convert to int
+        co2_value = static_cast<int>(readings.co2);
+        temp_value = static_cast<int>(readings.temperature);
+        humidity_value = static_cast<int>(readings.humidity);
+        fan_speed_value = static_cast<int>(readings.fanSpeed);
+        setpoint_value = static_cast<int>(readings.targetCo2);
+      }
+
+      // Send data to ThingSpeak and check for new commands
+      sendData(co2_value, temp_value, humidity_value, fan_speed_value, setpoint_value);
+
+      // Wait a bit before checking TalkBack (ThingSpeak rate limit)
+      vTaskDelay(pdMS_TO_TICKS(5000));
+
+      // Check for new commands from TalkBack
+      checkTalkBackQueue();
+    }
+    // Wait before next update cycle
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY));
+  }
 }

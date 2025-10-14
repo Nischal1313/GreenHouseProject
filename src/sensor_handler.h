@@ -9,7 +9,7 @@
 #include "uart/PicoOsUart.h"
 #include "modbus/ModbusClient.h"
 #include <memory>
-// #include <vector>
+#include <vector>
 #include <functional>
 #include "rotary_encoder.h"
 
@@ -40,7 +40,9 @@ public:
   // Read all sensors and update cached values
   SensorValues getReadings() const;
 
-  void readFromEEPROM();
+  void copyValueFromEEPROM(uint16_t addr, int &valueToWriteTo) const;
+
+  void emptyCloudValueFromEEPROM();
 
   void writeToEEPROM() const;
 
@@ -54,6 +56,8 @@ public:
 
   // FreeRTOS task entry point
   static void controlTask(void *pvParameters);
+  static constexpr uint16_t EEPROM_CO2_ADDR = 0x10;
+  static constexpr uint16_t EEPROM_CO2_CLOUD_ADDR = 0x0200;
 
 private:
   // Hardware interfaces
@@ -77,9 +81,10 @@ private:
   static constexpr uint CONTROL_LOOP_DELAY = 300; // ms
   static constexpr uint16_t MIN_CO2 = 200;
   static constexpr uint16_t MAX_CO2 = 1500;
-  static constexpr uint16_t EEPROM_CO2_ADDR = 0x10;
+
 
   int targetCo2{};
+  int cloudtargetCo2 = 0;
   mutable uint32_t lastValveActionTime{0};
   mutable bool valveActive{false};
   mutable uint32_t valveOpenDuration{0};

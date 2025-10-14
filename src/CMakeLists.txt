@@ -48,6 +48,7 @@ add_executable(${ProjectName}
         setCredentials.cpp
         setpoint_manager.cpp
         sensor_handler.cpp
+        cloud_handler.cpp
 
 )
 
