@@ -1,5 +1,7 @@
+extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
+}
 #include "setCredentials.h"
 #include "displayMenu.h"
 #include <cstdarg>
@@ -14,9 +16,10 @@ DisplayManager::DisplayManager(std::shared_ptr<Debug> debug,
     debug(std::move(debug)),
     encoder(encoderPtr),
     params(nullptr),
-    lastWifiEncoderPos(0),
     unsavedChanges(false),
-    menuState(MenuState::MAIN) {
+    menuState(MenuState::MAIN),
+    prevSSIDSelected(true),
+    prevCharsetChanged(false) {
 }
 
 void DisplayManager::setParams(DisplayParams *displayParams) {
@@ -40,7 +43,7 @@ MenuState DisplayManager::getCurrentMenuState() const {
       continue;
     }
 
-    const bool inMainMenu = params->inputManager->isMainMenu();
+    bool inMainMenu = params->inputManager->isMainMenu();
 
     if (inMainMenu) {
       drawMainMenu();
@@ -57,8 +60,7 @@ void DisplayManager::drawMainMenu() const {
   oLed->fill(0);
 
   char buf[128];
-  const auto [temperature, humidity, co2,
-        fanSpeed, valveOpen, targetCo2] =
+  const auto [temperature, humidity, co2, fanSpeed, valveOpen, targetCo2] =
       params->sensorHandler->getReadings();
 
   snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
@@ -101,15 +103,11 @@ void DisplayManager::drawWifiMenu() {
   oLed->text(buf, 2, 12);
 
   // Get the current charset mode from SetCredentials (the source of truth)
-  const auto mode = cred->getCharsetMode();
+  auto mode = cred->getCharsetMode();
   const char *charsetName =
-      (mode == CharsetMode::LOWERCASE)
-        ? "abc"
-        : (mode == CharsetMode::UPPERCASE)
-            ? "ABC"
-            : (mode == CharsetMode::NUMBERS)
-                ? "123"
-                : "undef";
+      (mode == CharsetMode::LOWERCASE) ? "abc" :
+      (mode == CharsetMode::UPPERCASE) ? "ABC" :
+      (mode == CharsetMode::NUMBERS) ? "123" : "undef";
   snprintf(buf, sizeof(buf), "Charset: %s", charsetName);
   oLed->text(buf, 2, 24);
 
@@ -131,18 +129,18 @@ void DisplayManager::drawWifiMenu() {
 }
 
 void DisplayManager::handleWifiMenuButtons() {
-  // Handle field switching (SSID <-> Password)
-  if (params->inputManager->isSSIDSelected()) {
+  // FIX #1: Detect actual state change for field switching (debouncing)
+  bool currentSSIDSelected = params->inputManager->isSSIDSelected();
+  if (currentSSIDSelected != prevSSIDSelected) {
+    prevSSIDSelected = currentSSIDSelected;
     printf("[DisplayManager] Next Field button pressed\n");
     params->credentials->nextField();
     unsavedChanges = true;
   }
 
-  // Map InputManager's InputCharsetMode to SetCredentials' CharsetMode
-  // InputManager: CAPITAL, NORMAL, NUMERIC
-  // SetCredentials: UPPERCASE, LOWERCASE, NUMBERS
-  const auto inputCharset = params->inputManager->getCharsetMode();
-  const auto credCharset = params->credentials->getCharsetMode();
+  // Handle charset mode changes
+  auto inputCharset = params->inputManager->getCharsetMode();
+  auto credCharset = params->credentials->getCharsetMode();
 
   // Map from InputManager enum to SetCredentials enum
   CharsetMode targetCharset;
@@ -169,11 +167,42 @@ void DisplayManager::handleWifiMenuButtons() {
       params->credentials->nextCharset();
     }
   }
+
+  // FIX #2: Handle rotary encoder for character selection
+  if (encoder->rotatedCW()) {
+    params->credentials->rotateChar(1);  // Move forward through charset
+    printf("[DisplayManager] Encoder CW, char=%c\n",
+           params->credentials->getCurrentChar());
+  }
+
+  if (encoder->rotatedCCW()) {
+    params->credentials->rotateChar(-1);  // Move backward through charset
+    printf("[DisplayManager] Encoder CCW, char=%c\n",
+           params->credentials->getCurrentChar());
+  }
+
+  // FIX #2: Handle encoder button press to confirm character
+  if (encoder->buttonPressed()) {
+    char selectedChar = params->credentials->getCurrentChar();
+    params->credentials->confirmChar();
+    unsavedChanges = false;  // confirmChar() saves to EEPROM
+    printf("[DisplayManager] Character '%c' confirmed and added to %s\n",
+           selectedChar, params->credentials->getCurrentFieldName());
+  }
+
+  // Optional: Handle long-press to delete last character
+  if (encoder->buttonHeld()) {
+    params->credentials->clearCurrentField();
+    unsavedChanges = false;
+    printf("[DisplayManager] Field cleared via encoder hold\n");
+  }
 }
 
 void DisplayManager::changeMenu() {
   menuState = (menuState == MenuState::MAIN) ? MenuState::WIFI : MenuState::MAIN;
   unsavedChanges = false;
+  printf("[DisplayManager] Switched menu to %s\n",
+         menuState == MenuState::MAIN ? "MAIN" : "WIFI");
 }
 
 void DisplayManager::log(const char *fmt, ...) const {

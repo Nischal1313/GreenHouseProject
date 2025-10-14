@@ -87,10 +87,6 @@ uint32_t read_runtime_ctr(void) {
   printf("7 - Initializing Credentials Manager...\n");
   auto credentials = std::make_shared<SetCredentials>(*eeprom, eepromMutex);
 
-  // --- Initialize SetpointManager (shares encoder) ---
-  printf("8 - Initializing SetpointManager...\n");
-  // auto setpointManager = std::make_shared<SetpointManager>(sensorMutex, eeprom, encoder);
-
   // --- Initialize SensorHandler ---
   printf("9 - Initializing SensorHandler...\n");
   auto sensorHandler = std::make_shared<SensorHandler>(sensorMutex, encoder
@@ -111,7 +107,7 @@ uint32_t read_runtime_ctr(void) {
   // --- Set parameters ---
   displayManager.setParams(&displayParams);
 
-  
+
   // --- Create FreeRTOS Tasks ---
   printf("12 - Creating FreeRTOS tasks...\n");
 

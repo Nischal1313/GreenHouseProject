@@ -10,7 +10,7 @@ InputManager::InputManager()
     currentCharsetIndex(0)
 {
   menuButton = std::make_unique<GPIOPin>(MENU_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
-  nextFieldButton = std::make_unique<GPIOPin>(NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
+  nextFieldButton = std::make_unique<GPIOPin>(NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, 200);
   charsetButton = std::make_unique<GPIOPin>(CHARSET_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
 
   menuButton->setHoldTime(HOLD_MS);

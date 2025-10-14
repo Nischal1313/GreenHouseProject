@@ -52,9 +52,12 @@ private:
   std::shared_ptr<RotaryEncoder> encoder;
 
   DisplayParams *params;
-  int lastWifiEncoderPos;
   bool unsavedChanges;
   MenuState menuState;
+
+  // Track previous button states to detect real changes
+  bool prevSSIDSelected;
+  bool prevCharsetChanged;
 };
 
 #endif  // DISPLAY_MENU_H
