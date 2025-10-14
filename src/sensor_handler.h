@@ -18,6 +18,7 @@
 #include <cstdio>
 #include "sensor_handler.h"
 #include "rotary_encoder.h"
+#include "eeprom/eeprom.h"
 
 
 struct SensorValues {
@@ -32,10 +33,16 @@ struct SensorValues {
 class SensorHandler {
 public:
   SensorHandler(SemaphoreHandle_t mutex
-                , const std::shared_ptr<RotaryEncoder> &);
+                , const std::shared_ptr<RotaryEncoder> &,
+                SemaphoreHandle_t eepromMutex
+                , const std::shared_ptr<Eeprom> &);
 
   // Read all sensors and update cached values
   SensorValues getReadings() const;
+
+  void readFromEEPROM();
+
+  void writeToEEPROM();
 
   // Control valve/fan based on current CO2 vs setpoint
   void updateControl();
@@ -54,14 +61,12 @@ private:
   std::shared_ptr<HMP60> hmpSensor;
   std::shared_ptr<ModbusMIO> fan;
   std::shared_ptr<VALVE> valve;
+  std::shared_ptr<RotaryEncoder> encoder; // Changed to shared_ptr - CRITICAL FIX
+  std::shared_ptr<Eeprom> eeprom; // Changed to shared_ptr - CRITICAL FIX
 
   // Thread safety
   SemaphoreHandle_t mutex;
-
-  // Cached sensor data
-  // SensorValues latestReadings;
-
-  std::shared_ptr<RotaryEncoder> encoder; // Changed to shared_ptr - CRITICAL FIX
+  SemaphoreHandle_t eepromMutex;
 
   // Control constants
   static constexpr uint ACCEPTED_RANGE = 10;
@@ -72,6 +77,7 @@ private:
   static constexpr uint CONTROL_LOOP_DELAY = 300; // ms
   static constexpr uint16_t MIN_CO2 = 200;
   static constexpr uint16_t MAX_CO2 = 1500;
+  static constexpr uint16_t EEPROM_CO2_ADDR = 0x00;
 
   int targetCo2{};
   mutable uint32_t lastValveActionTime{0};

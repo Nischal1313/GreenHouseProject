@@ -4,9 +4,12 @@
 #include <cstdio>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "eeprom/eeprom.h"
 
-SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_ptr<RotaryEncoder> &encoderPtr)
-  : mutex(mutex), encoder(encoderPtr) {
+SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const std::shared_ptr<RotaryEncoder> &encoderPtr,
+                             const SemaphoreHandle_t eepromMutex, const std::shared_ptr<Eeprom> &eepromPtr)
+  : mutex(mutex), encoder(encoderPtr), eepromMutex(eepromMutex), eeprom(eepromPtr) {
+
   // Initialize UART for Modbus communication
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5, 9600, 8, 256, 256);
   auto modbusClient = std::make_shared<ModbusClient>(uart);
@@ -27,6 +30,29 @@ SensorValues SensorHandler::getReadings() const {
   vals.valveOpen = valve->valveStatus();
   vals.targetCo2 = targetCo2;
   return vals;
+}
+
+void SensorHandler::readFromEEPROM() {
+  const MutexGuard lock(eepromMutex);
+  printf("reading");
+  uint8_t buf[2] = {0};
+  if (eeprom->readBlock(EEPROM_CO2_ADDR, buf, 2)) {
+    targetCo2 = (buf[0] << 8) | buf[1];
+    targetCo2 = std::clamp(targetCo2, 200, 1500);
+  } else {
+    targetCo2 = 222;
+  }
+}
+
+void SensorHandler::writeToEEPROM() {
+  printf("writing");
+
+  const MutexGuard lock(eepromMutex);
+  uint8_t buf[2] = {
+    static_cast<uint8_t>(targetCo2 >> 8),
+    static_cast<uint8_t>(targetCo2 & 0xFF)
+};
+  eeprom->writeBlock(EEPROM_CO2_ADDR, buf, 2);
 }
 
 
@@ -58,6 +84,7 @@ void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredC
       // Too low → CO2 injection
       int openTimeMs = (diff * static_cast<int>(MAX_VALVE_OPEN_TIME)) / 1000;
       openTimeMs = std::clamp(openTimeMs, 50, static_cast<int>(MAX_VALVE_OPEN_TIME));
+      writeToEEPROM(); // I think this is a good time to write.
 
       valve->openValve();
       fan->setFanSpeed(IDLE_SPEED);
@@ -99,13 +126,21 @@ void SensorHandler::updateControl() {
   }
 }
 
-[[noreturn]] void SensorHandler::controlLoop() {
+void SensorHandler::controlLoop() {
+  //Eeprom read would always run before the code for
+  //it had been generated which lead to the code crashing.
+  static bool initialized = false;
+  if (!initialized) {
+    // readFromEEPROM();
+    initialized = true;
+  }
   while (true) {
     updateControl();
     updateFromEncoder();
     vTaskDelay(pdMS_TO_TICKS(60));
   }
 }
+
 
 void SensorHandler::controlTask(void *pvParameters) {
   auto *self = static_cast<SensorHandler *>(pvParameters);

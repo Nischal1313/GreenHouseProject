@@ -88,8 +88,8 @@ uint32_t read_runtime_ctr(void) {
 
   // --- Initialize SensorHandler ---
   printf("9 - Initializing SensorHandler...\n");
-  auto sensorHandler = std::make_shared<SensorHandler>(sensorMutex, encoder
-  );
+  auto sensorHandler = std::make_shared<SensorHandler>(sensorMutex, encoder,
+    eepromMutex, eeprom);
   printf("   Sensor handler initialized\n");
 
   static DisplayManager displayManager(debug, oLed, encoder);
