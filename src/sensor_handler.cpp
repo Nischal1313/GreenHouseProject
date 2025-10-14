@@ -30,7 +30,7 @@ SensorValues SensorHandler::getReadings() const {
 }
 
 
-void SensorHandler::handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) {
+void SensorHandler::handleValveAndFanLogic(const float co2Lvl,const int desiredCo2Lvl) {
   const int diff = desiredCo2Lvl - static_cast<int>(co2Lvl);
   const uint32_t now = to_ms_since_boot(get_absolute_time());
 

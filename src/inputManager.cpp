@@ -2,13 +2,13 @@
 #include <cstdio>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "sensor_handler.h"
 
 InputManager::InputManager()
   : mainMenu(true),
     ssidSelected(true),
     charsetModes({InputCharsetMode::CAPITAL, InputCharsetMode::NORMAL, InputCharsetMode::NUMERIC}),
-    currentCharsetIndex(0)
-{
+    currentCharsetIndex(0) {
   menuButton = std::make_unique<GPIOPin>(MENU_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);
   nextFieldButton = std::make_unique<GPIOPin>(NEXT_FIELD_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, 200);
   charsetButton = std::make_unique<GPIOPin>(CHARSET_PIN, GPIOMode::INPUT, GPIOPull::PULLUP, false, DEBOUNCE_MS);

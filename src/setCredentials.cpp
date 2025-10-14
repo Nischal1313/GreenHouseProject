@@ -30,7 +30,7 @@ bool CredentialValidator::isValidString(const uint8_t* data, const size_t len, c
     return true;
 }
 
-SetCredentials::SetCredentials(Eeprom& eeprom, SemaphoreHandle_t eepromMutex)
+SetCredentials::SetCredentials(Eeprom& eeprom, const SemaphoreHandle_t eepromMutex)
     : eeprom(eeprom),
       eepromMutex(eepromMutex),
       currentField(CredentialField::WIFI_NAME),
@@ -39,7 +39,7 @@ SetCredentials::SetCredentials(Eeprom& eeprom, SemaphoreHandle_t eepromMutex)
 {
     charsets[0] = "abcdefghijklmnopqrstuvwxyz";
     charsets[1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    charsets[2] = "0123456789";
+    charsets[2] = "0123456789-/?+:.<>|#!%()[]{}";
     buffers[0].clear();
     buffers[1].clear();
     loadFromEEPROM();

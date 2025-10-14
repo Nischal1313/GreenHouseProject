@@ -123,9 +123,6 @@ void DisplayManager::drawWifiMenu() {
     oLed->text("Saved", 2, 56);
 
   oLed->show();
-
-  printf("[DisplayManager] WiFi menu drawn - Field: %s, Char: %c\n",
-         cred->getCurrentFieldName(), curChar);
 }
 
 void DisplayManager::handleWifiMenuButtons() {

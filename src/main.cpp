@@ -77,7 +77,6 @@ uint32_t read_runtime_ctr(void) {
   // --- Initialize Rotary Encoder (SINGLE SHARED INSTANCE) ---
   printf("5 - Initializing Rotary Encoder...\n");
   auto encoder = std::make_shared<RotaryEncoder>();
-  printf("   Encoder initialized (pins A=10, B=11, Button=12)\n");
 
   // --- Initialize Input Manager (GPIO buttons) ---
   printf("6 - Initializing Input Manager...\n");
