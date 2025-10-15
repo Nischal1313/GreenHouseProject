@@ -19,7 +19,7 @@
 
 /* Forward declaration of response buffer so callbacks can append to it before
  * the actual definition later in this file. */
-extern char tls_client_response[2048];
+extern char tls_client_response[2048*2];
 
 typedef struct TLS_CLIENT_T_ {
     struct altcp_pcb *pcb;
@@ -268,7 +268,7 @@ bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *serve
 // ============================================================================
 
 // Response buffer (used by run_tls_client_test and cloud_handler)
-char tls_client_response[2048];
+char tls_client_response[2048*2];
 
 // Root CA certificate for api.thingspeak.com (Amazon Root CA 1)
 const char root_ca[] =
