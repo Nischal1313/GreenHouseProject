@@ -10,9 +10,12 @@ SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const
                              std::shared_ptr<RotaryEncoder> &
                              encoderPtr,
                              const SemaphoreHandle_t eepromMutex,
-                             Eeprom &eeprom)
+                             Eeprom &eeprom,
+                             const std::shared_ptr<InputManager>
+                             &inputManager
+)
   : encoder(encoderPtr), eeprom(&eeprom), mutex(mutex),
-    eepromMutex(eepromMutex) {
+    eepromMutex(eepromMutex), inputManager(inputManager) {
   auto uart = std::make_shared<PicoOsUart>(1, 4, 5,
                                            9600, 8,
                                            256, 256);
@@ -25,6 +28,7 @@ SensorHandler::SensorHandler(const SemaphoreHandle_t mutex, const
   fan = std::make_shared<ModbusMIO>(modbusClient, mutex);
   valve = std::make_shared<VALVE>();
   copyValueFromEEPROM(EEPROM_CO2_ADDR, targetCo2);
+  inMainMenu = true;
 }
 
 SensorValues SensorHandler::getReadings() const {
@@ -117,14 +121,17 @@ void SensorHandler::handleValveAndFanLogic(
 
 
 void SensorHandler::updateFromEncoder() {
-  const bool cwRotation = encoder->rotatedCW();
-  const bool ccwRotation = encoder->rotatedCCW();
+  inMainMenu = inputManager->isMainMenu();
+  if (inMainMenu) {
+    const bool cwRotation = encoder->rotatedCW();
+    const bool ccwRotation = encoder->rotatedCCW();
 
-  if (cwRotation) {
-    targetCo2 = std::min(targetCo2 + 5, static_cast<int>(MAX_CO2));
-  }
-  if (ccwRotation) {
-    targetCo2 = std::max(targetCo2 - 5, static_cast<int>(MIN_CO2));
+    if (cwRotation) {
+      targetCo2 = std::min(targetCo2 + 5, static_cast<int>(MAX_CO2));
+    }
+    if (ccwRotation) {
+      targetCo2 = std::max(targetCo2 - 5, static_cast<int>(MIN_CO2));
+    }
   }
 }
 

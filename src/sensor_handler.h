@@ -18,6 +18,7 @@
 #include "sensor_handler.h"
 #include "rotary_encoder.h"
 #include "eeprom/eeprom.h"
+#include "inputManager.h"
 
 
 struct SensorValues {
@@ -34,7 +35,7 @@ public:
   SensorHandler(SemaphoreHandle_t mutex
                 , const std::shared_ptr<RotaryEncoder> &,
                 SemaphoreHandle_t eepromMutex
-                , Eeprom &eeprom);
+                , Eeprom &eeprom, const std::shared_ptr<InputManager> &inputManager);
 
 
   SensorValues getReadings() const;
@@ -62,6 +63,7 @@ private:
   std::shared_ptr<ModbusMIO> fan;
   std::shared_ptr<VALVE> valve;
   std::shared_ptr<RotaryEncoder> encoder;
+  std::shared_ptr<InputManager> inputManager;
   Eeprom *eeprom;
 
   SemaphoreHandle_t mutex;
@@ -82,6 +84,7 @@ private:
   mutable uint32_t lastValveActionTime{0};
   mutable bool valveActive{false};
   mutable uint32_t valveOpenDuration{0};
+  bool inMainMenu;
 
   void handleValveAndFanLogic(float co2Lvl, int desiredCo2Lvl) const;
 

@@ -35,7 +35,6 @@ uint32_t read_runtime_ctr(void) {
 
 
 [[noreturn]] int main() {
-
   stdio_init_all();
 
   i2c_init(i2c1, 400'000);
@@ -73,7 +72,7 @@ uint32_t read_runtime_ctr(void) {
 
   auto sensorHandler = std::make_shared<SensorHandler>(
     sensorMutex, encoder,
-    eepromMutex, *eeprom);
+    eepromMutex, *eeprom, inputManager);
 
   const auto cloudHandler = std::make_shared<CloudClass>(
     sensorHandler, eepromMutex, *eeprom);
@@ -89,7 +88,6 @@ uint32_t read_runtime_ctr(void) {
   };
 
   displayManager.setParams(&displayParams);
-
 
 
   xTaskCreate(encoderUpdateTask, "EncoderTask", 1024,
