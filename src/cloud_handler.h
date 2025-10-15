@@ -50,7 +50,7 @@ private:
   static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0500;
   static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0600;
   static constexpr uint16_t FIELD_SIZE = 32;
-  static constexpr uint TASK_DELAY = 60000;
+  static constexpr uint TASK_DELAY = 10000;
   // 60 seconds between updates
   static constexpr int MIN_CO2_SETPOINT = 200;
   static constexpr int MAX_CO2_SETPOINT = 15000;

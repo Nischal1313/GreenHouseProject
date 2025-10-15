@@ -18,7 +18,6 @@ DisplayManager::DisplayManager(std::shared_ptr<Debug> debug,
     debug(std::move(debug)),
     encoder(encoderPtr),
     params(nullptr),
-    unsavedChanges(false),
     menuState(MenuState::MAIN),
     prevSSIDSelected(true),
     prevCharsetChanged(false) {
@@ -91,12 +90,6 @@ void DisplayManager::drawWifiMenu() {
   oLed->fill(0);
 
   auto *cred = params->credentials;
-  if (!cred) {
-    oLed->text("No credentials", 2, 24);
-    oLed->show();
-    return;
-  }
-
   char buf[128];
 
   snprintf(buf, sizeof(buf), "|%s|", cred->getCurrentFieldName());
@@ -105,45 +98,36 @@ void DisplayManager::drawWifiMenu() {
   snprintf(buf, sizeof(buf), "%s", cred->getCurrentBuffer());
   oLed->text(buf, 0, 12);
 
-  // Get the current charset mode from SetCredentials (the source of truth)
   const auto mode = cred->getCharsetMode();
   const char *charsetName =
       (mode == CharsetMode::LOWERCASE)
-        ? "a b c"
+        ? "a b z"
         : (mode == CharsetMode::UPPERCASE)
-            ? "A B C"
+            ? "A B Z"
             : (mode == CharsetMode::NUMBERS)
-                ? "1 % > _ <"
+                ? "1 %  _ <"
                 : "undef";
-  snprintf(buf, sizeof(buf), "Set: %s", charsetName);
+  snprintf(buf, sizeof(buf), "Chars: %s", charsetName);
   oLed->text(buf, 2, 22);
 
   char curChar = cred->getCurrentChar();
-  snprintf(buf, sizeof(buf), "-- > %c", curChar);
+  snprintf(buf, sizeof(buf), "-> %c <-", curChar);
   oLed->text(buf, 55, 32);
-
-  if (unsavedChanges)
-    oLed->text("unsaved :[", 50, 56);
-  else
-    oLed->text("Saved :]", 50, 56);
 
   oLed->show();
 }
 
 void DisplayManager::handleWifiMenuButtons() {
-  // FIX #1: Detect actual state change for field switching (debouncing)
-  bool currentSSIDSelected = params->inputManager->isSSIDSelected();
+  const bool currentSSIDSelected = params->inputManager->
+      isSSIDSelected();
   if (currentSSIDSelected != prevSSIDSelected) {
     prevSSIDSelected = currentSSIDSelected;
     params->credentials->nextField();
-    unsavedChanges = true;
   }
 
-  // Handle charset mode changes
-  auto inputCharset = params->inputManager->getCharsetMode();
-  auto credCharset = params->credentials->getCharsetMode();
+  const auto inputCharset = params->inputManager->getCharsetMode();
+  const auto credCharset = params->credentials->getCharsetMode();
 
-  // Map from InputManager enum to SetCredentials enum
   CharsetMode targetCharset;
   switch (inputCharset) {
     case InputCharsetMode::CAPITAL:
@@ -160,9 +144,8 @@ void DisplayManager::handleWifiMenuButtons() {
       break;
   }
 
-  // Only update if the charset has changed
+
   if (credCharset != targetCharset) {
-    // Cycle SetCredentials charset until it matches InputManager's state
     while (params->credentials->getCharsetMode() != targetCharset) {
       params->credentials->nextCharset();
     }
@@ -170,25 +153,20 @@ void DisplayManager::handleWifiMenuButtons() {
 
   if (encoder->rotatedCW()) {
     params->credentials->rotateChar(1);
-    // Move forward through charset
   }
 
   if (encoder->rotatedCCW()) {
     params->credentials->rotateChar(-1);
-    // Move backward through charset
   }
 
 
   if (encoder->buttonPressed()) {
     char selectedChar = params->credentials->getCurrentChar();
     params->credentials->confirmChar();
-    unsavedChanges = false; // confirmChar() saves to EEPROM
   }
 
-  // Optional: Handle long-press to delete last character
   if (encoder->buttonHeld()) {
     params->credentials->clearCurrentField();
-    unsavedChanges = false;
   }
 }
 
@@ -196,17 +174,6 @@ void DisplayManager::changeMenu() {
   menuState = (menuState == MenuState::MAIN)
                 ? MenuState::WIFI
                 : MenuState::MAIN;
-  unsavedChanges = false;
-}
-
-void DisplayManager::log(const char *fmt, ...) const {
-  if (!debug) return;
-  va_list args;
-  va_start(args, fmt);
-  char buf[256];
-  vsnprintf(buf, sizeof(buf), fmt, args);
-  va_end(args);
-  debug->print("%s", buf);
 }
 
 void DisplayManager::taskEntry(void *pvParameters) {

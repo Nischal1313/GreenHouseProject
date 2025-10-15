@@ -21,7 +21,7 @@ void Debug::print(const char *txt, ...) const {
   vsnprintf(e.msg, sizeof(e.msg), txt, args);
   va_end(args);
 
-  // Non-blocking send
+  // Non-blocking send, events can be lost
   xQueueSend(m_queue, &e, 0);
 }
 

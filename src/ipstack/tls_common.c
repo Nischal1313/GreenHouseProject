@@ -17,6 +17,10 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* Forward declaration of response buffer so callbacks can append to it before
+ * the actual definition later in this file. */
+extern char tls_client_response[2048];
+
 typedef struct TLS_CLIENT_T_ {
     struct altcp_pcb *pcb;
     bool complete;
@@ -98,6 +102,23 @@ static err_t tls_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, e
         buf[p->tot_len] = 0;
 
         printf("***\nnew data received from server:\n***\n\n%s\n", buf);
+
+        /* Append the received chunk into the global tls_client_response buffer
+         * so higher-level code (cloud_handler.cpp) can parse the full HTTP
+         * response after run_tls_client_test() completes. Keep buffer bounds
+         * in mind and do not overflow tls_client_response. */
+        size_t cur_len = strlen(tls_client_response);
+        size_t space_left = sizeof(tls_client_response) - cur_len - 1; /* reserve NUL */
+        if (space_left > 0) {
+            /* Copy at most space_left bytes */
+            size_t to_copy = (p->tot_len <= space_left) ? p->tot_len : space_left;
+            memcpy(tls_client_response + cur_len, buf, to_copy);
+            tls_client_response[cur_len + to_copy] = '\0';
+        } else {
+            /* Buffer full; consider logging or truncating further data */
+            printf("tls_client_response buffer full, dropping %u bytes\n", p->tot_len);
+        }
+
         free(buf);
 
         altcp_recved(pcb, p->tot_len);

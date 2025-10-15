@@ -1,5 +1,4 @@
-#ifndef SET_CREDENTIALS_H
-#define SET_CREDENTIALS_H
+#pragma once
 
 #include <string>
 #include "eeprom/eeprom.h"
@@ -36,12 +35,10 @@ public:
     return currentField;
   }
 
-  // Charset control
   void nextCharset();
 
   [[nodiscard]] CharsetMode getCharsetMode() const;
 
-  // Character editing
   [[nodiscard]] char getCurrentChar() const;
 
   void rotateChar(int direction);
@@ -50,12 +47,10 @@ public:
 
   void clearCurrentField();
 
-  // Buffers
   const char *getCurrentBuffer();
 
   void saveAllToEEPROM() const;
 
-  // Retrieval
   [[nodiscard]] const char *getWifiSSID() const {
     return buffers[0].c_str();
   }
@@ -86,8 +81,4 @@ private:
   std::string &currentBuffer();
 
   [[nodiscard]] const std::string &currentBuffer() const;
-
-  void debugLog(const char *fmt, ...) const;
 };
-
-#endif

@@ -46,7 +46,6 @@ add_executable(${ProjectName}
         eeprom/eeprom.cpp
         inputManager.cpp
         setCredentials.cpp
-        setpoint_manager.cpp
         sensor_handler.cpp
         cloud_handler.cpp
 

@@ -36,6 +36,7 @@ uint32_t read_runtime_ctr(void) {
 
 
 [[noreturn]] int main() {
+
   stdio_init_all();
 
   i2c_init(i2c1, 400'000);
@@ -43,6 +44,7 @@ uint32_t read_runtime_ctr(void) {
   gpio_set_function(15, GPIO_FUNC_I2C);
   gpio_pull_up(14);
   gpio_pull_up(15);
+
   auto i2cbus = std::make_shared<PicoI2C>(1, 400'000);
   auto oLed = std::make_shared<ssd1306os>(i2cbus);
 
@@ -52,6 +54,7 @@ uint32_t read_runtime_ctr(void) {
   gpio_set_function(17, GPIO_FUNC_I2C);
   gpio_pull_up(16);
   gpio_pull_up(17);
+
   const auto eeprom = std::make_shared<Eeprom>(i2c0, 0x50, 2);
 
 
@@ -61,7 +64,6 @@ uint32_t read_runtime_ctr(void) {
 
   auto debug = std::make_shared<Debug>();
   auto debugTask = std::make_shared<DebugTask>(debug);
-  debug->print("Debug system online\n");
 
   auto encoder = std::make_shared<RotaryEncoder>();
 
@@ -91,19 +93,19 @@ uint32_t read_runtime_ctr(void) {
 
 
 
-  xTaskCreate(encoderUpdateTask, "EncoderHW", 1024,
+  xTaskCreate(encoderUpdateTask, "EncoderTask", 1024,
               encoder.get(), 3, nullptr);
 
-  xTaskCreate(SensorHandler::controlTask, "SensorCtrl", 2048,
+  xTaskCreate(SensorHandler::controlTask, "SensorLogic", 2048,
               sensorHandler.get(), 2, nullptr);
 
   xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048,
               &displayManager, 1, nullptr);
 
-  xTaskCreate(InputManager::taskEntry, "InputMgr", 1024,
+  xTaskCreate(InputManager::taskEntry, "InputHandler", 1024,
               inputManager.get(), 3, nullptr);
 
-  xTaskCreate(CloudClass::taskEntry, "Cloud", 1024,
+  xTaskCreate(CloudClass::taskEntry, "CloudHandler", 1024,
               cloudHandler.get(), 3, nullptr);
 
   vTaskStartScheduler();

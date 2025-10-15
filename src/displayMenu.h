@@ -1,5 +1,4 @@
-#ifndef DISPLAY_MENU_H
-#define DISPLAY_MENU_H
+#pragma once
 
 #include <memory>
 #include <cstdio>
@@ -49,8 +48,6 @@ private:
 
   void changeMenu();
 
-  void log(const char *fmt, ...) const;
-
   [[nodiscard]] MenuState getCurrentMenuState() const;
 
   std::shared_ptr<ssd1306os> oLed;
@@ -58,12 +55,9 @@ private:
   std::shared_ptr<RotaryEncoder> encoder;
 
   DisplayParams *params;
-  bool unsavedChanges;
   MenuState menuState;
 
-  // Track previous button states to detect real changes
   bool prevSSIDSelected;
   bool prevCharsetChanged;
 };
 
-#endif  // DISPLAY_MENU_H

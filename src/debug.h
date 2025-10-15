@@ -1,5 +1,4 @@
-#ifndef DEBUG_H
-#define DEBUG_H
+#pragma once
 
 #include "queue.h"
 #include <memory>
@@ -33,11 +32,6 @@ private:
 };
 
 
-// void debugInit();
 void debug(const char *txt, ...);
 
 void createQueue();
-
-//extern QueueHandle_t debugQueue;
-
-#endif // DEBUG_H

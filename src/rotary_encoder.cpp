@@ -1,9 +1,4 @@
-//
-// Created by nischal on 10/10/25.
-//
-
 #include "rotary_encoder.h"
-#include <cstdio>
 
 /*
  * Gray-code rotary encoder logic with button press/hold and debouncing.
@@ -27,7 +22,7 @@ RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB,
     lastButtonReading(false), buttonState(false),
     pressedEvent(false), heldEvent(false),
     debounceTime(debounceTime), holdTime(holdTime) {
-  // --- GPIO setup ---
+
   gpio_init(pinA);
   gpio_set_dir(pinA, GPIO_IN);
   gpio_pull_up(pinA);
@@ -40,7 +35,7 @@ RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB,
 
   const int MSB = !gpio_get(pinA);
   const int LSB = !gpio_get(pinB);
-  lastEncoded = (MSB << 1) | LSB;
+  lastEncoded = MSB << 1 | LSB;
 
   lastDebounceTime = get_absolute_time();
   pressStartTime = get_absolute_time();
@@ -50,10 +45,10 @@ RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB,
 void RotaryEncoder::update() {
   const int MSB = !gpio_get(pinA);
   const int LSB = !gpio_get(pinB);
-  const int encoded = (MSB << 1) | LSB;
+  const int encoded = MSB << 1 | LSB;
 
   // These 8 transitions are valid
-  switch ((lastEncoded << 2) | encoded) {
+  switch (lastEncoded << 2 | encoded) {
     // CW transitions
     case 0b1101:
     case 0b0100:
@@ -101,7 +96,6 @@ void RotaryEncoder::update() {
     }
   }
 
-  // Detect hold
   if (buttonState && !heldEvent &&
       absolute_time_diff_us(pressStartTime, now) > holdTime * 1000) {
     heldEvent = true;

@@ -1,5 +1,4 @@
-#ifndef MUTEX_GUARD
-#define MUTEX_GUARD
+#pragma once
 
 #include <FreeRTOS.h>
 #include "portmacro.h"
@@ -9,16 +8,14 @@
 /**
  * @brief RAII wrapper for FreeRTOS mutexes.
  *
- * Acquires the given mutex in the constructor, releases it in the destructor.
+ * Acquires the given mutex in the constructor,
+ * releases it in the destructor.
  * Ensures safe and exception-proof locking for shared resources.
- *
- * - Non-copyable (cannot be copied, avoids double release).
- * - Movable (can be returned from functions or stored in containers).
  */
 class MutexGuard {
 public:
-  explicit MutexGuard(SemaphoreHandle_t m)
-    : mutex(m), locked(false) {
+  explicit MutexGuard(const SemaphoreHandle_t mutex)
+    : mutex(mutex), locked(false) {
     if (mutex && xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
       locked = true;
     }
@@ -60,5 +57,3 @@ private:
   SemaphoreHandle_t mutex;
   bool locked;
 };
-
-#endif

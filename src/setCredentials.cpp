@@ -5,15 +5,6 @@
 #include <algorithm>
 #include "pico/time.h"
 
-void SetCredentials::debugLog(const char *fmt, ...) const {
-#ifdef DEBUG
-  va_list args;
-  va_start(args, fmt);
-  vprintf(fmt, args);
-  va_end(args);
-#endif
-}
-
 bool CredentialValidator::isValidString(const uint8_t *data,
                                         const size_t len,
                                         const size_t fieldSize) {
@@ -25,7 +16,7 @@ bool CredentialValidator::isValidString(const uint8_t *data,
         break;
       }
     }
-    return !allSame; // all same = invalid
+    return !allSame;
   }
 
   for (size_t i = 0; i < len && i < fieldSize; i++) {
@@ -50,77 +41,11 @@ SetCredentials::SetCredentials(Eeprom &eeprom,
   loadFromEEPROM();
 }
 
-//
-// void SetCredentials::loadFromEEPROM() {
-//     printf("loading[SetCredentials]\n]");
-//     uint8_t tmp[FIELD_SIZE];
-//     const MutexGuard lock(eepromMutex);
-//
-//     if (!lock.owns_lock()) {
-//         debugLog("[EEPROM] Mutex acquisition failed during load.\n");
-//         return;
-//     }
-//
-//     auto loadField = [&](const CredentialField field, const uint16_t address, const int index) {
-//         if (!eeprom.readBlock(address, tmp, FIELD_SIZE)) {
-//             debugLog("[EEPROM] ✗ Failed to read %s\n",
-//                      field == CredentialField::WIFI_NAME ? "SSID" : "Password");
-//             buffers[index].clear();
-//             return;
-//         }
-//
-//         if (!CredentialValidator::isValidString(tmp, FIELD_SIZE, FIELD_SIZE)) {
-//             debugLog("[EEPROM] ✗ Invalid string in %s\n",
-//                      field == CredentialField::WIFI_NAME ? "SSID" : "Password");
-//             buffers[index].clear();
-//             return;
-//         }
-//
-//         tmp[FIELD_SIZE - 1] = '\0';
-//         buffers[index] = reinterpret_cast<char*>(tmp);
-//         if (buffers[index].size() > MAX_CREDENTIAL_LENGTH)
-//             buffers[index] = buffers[index].substr(0, MAX_CREDENTIAL_LENGTH);
-//     };
-//
-//     loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
-//     loadField(CredentialField::WIFI_PASSWD, EEPROM_WIFI_PASSWD_ADDR, 1);
-//     printf("[loading]%d, %d\n", static_cast<int>(CredentialField::WIFI_PASSWD),
-//                                  static_cast<int>(CredentialField::WIFI_NAME));
-//
-// }
-//
-// void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
-//     const uint16_t offset = (field == CredentialField::WIFI_NAME)
-//         ? EEPROM_WIFI_NAME_ADDR
-//         : EEPROM_WIFI_PASSWD_ADDR;
-//
-//     const auto& buf = buffers[static_cast<int>(field)];
-//     MutexGuard lock(eepromMutex);
-//
-//     if (!lock.owns_lock()) {
-//         debugLog("[EEPROM-setCreds] ✗ Mutex acquisition failed on save.\n");
-//         return;
-//     }
-//
-//     uint8_t writeData[FIELD_SIZE]{0};
-//     const size_t len = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
-//     memcpy(writeData, buf.c_str(), len);
-//
-//     if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE))
-//         debugLog("[EEPROM] ✗ Write failed for field %d\n", static_cast<int>(field));
-//     printf("[saving]%d, %d\n", static_cast<int>(CredentialField::WIFI_PASSWD),
-//                              static_cast<int>(CredentialField::WIFI_NAME));
-//
-//
-// }
-
 void SetCredentials::loadFromEEPROM() {
-  printf("loading[SetCredentials]\n");
   uint8_t tmp[FIELD_SIZE];
   const MutexGuard lock(eepromMutex);
 
   if (!lock.owns_lock()) {
-    debugLog("[EEPROM] Mutex acquisition failed during load.\n");
     return;
   }
 
@@ -136,18 +61,8 @@ void SetCredentials::loadFromEEPROM() {
       return;
     }
 
-    printf("[EEPROM] Raw bytes: ");
-    for (size_t i = 0; i < FIELD_SIZE; i++) {
-      printf("%02X ", tmp[i]);
-    }
-    printf("\n");
-
     if (!CredentialValidator::isValidString(
       tmp, FIELD_SIZE, FIELD_SIZE)) {
-      printf("[EEPROM] ✗ Invalid string in field %s\n",
-             field == CredentialField::WIFI_NAME
-               ? "SSID"
-               : "Password");
       buffers[index].clear();
       return;
     }
@@ -157,8 +72,6 @@ void SetCredentials::loadFromEEPROM() {
     if (buffers[index].size() > MAX_CREDENTIAL_LENGTH)
       buffers[index] = buffers[index].
           substr(0, MAX_CREDENTIAL_LENGTH);
-
-    printf("[EEPROM] Loaded '%s'\n", buffers[index].c_str());
   };
 
   loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
@@ -174,8 +87,6 @@ void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
   MutexGuard lock(eepromMutex);
 
   if (!lock.owns_lock()) {
-    debugLog(
-      "[EEPROM-setCreds] ✗ Mutex acquisition failed on save.\n");
     return;
   }
 
@@ -183,22 +94,6 @@ void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
   const size_t len = std::min(buf.size(),
                               static_cast<size_t>(FIELD_SIZE - 1));
   memcpy(writeData, buf.c_str(), len);
-
-  printf("[EEPROM] Saving field %s to address 0x%04X, data: ",
-         field == CredentialField::WIFI_NAME ? "SSID" : "Password",
-         offset);
-  for (size_t i = 0; i < FIELD_SIZE; i++) {
-    printf("%02X ", writeData[i]);
-  }
-  printf("\n");
-
-  if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE))
-    printf("[EEPROM] ✗ Write failed for field %s at 0x%04X\n",
-           field == CredentialField::WIFI_NAME ? "SSID" : "Password",
-           offset);
-  else
-    printf("[EEPROM] Write OK for field %s\n",
-           field == CredentialField::WIFI_NAME ? "SSID" : "Password");
 }
 
 
