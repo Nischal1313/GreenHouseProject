@@ -48,7 +48,6 @@ void SensorHandler::copyValueFromEEPROM(const uint16_t addr,
       return;
     }
     valueToWriteTo = checkingValue;
-    printf("Copying value %d \n", valueToWriteTo);
   }
 }
 
@@ -58,7 +57,6 @@ void SensorHandler::emptyValueFromEEPROM() const {
     static_cast<uint8_t>(0 & 0xFF)
   };
   eeprom->writeBlock(EEPROM_CO2_CLOUD_ADDR, buf, 2);
-  printf("%d %d emptying value \n", buf, EEPROM_CO2_CLOUD_ADDR);
 }
 
 void SensorHandler::writeToEEPROM() const {
@@ -75,8 +73,6 @@ void SensorHandler::writeToEEPROM() const {
   };
   if (eeprom->writeBlock(EEPROM_CO2_ADDR, buf, 2))
     lastWriteTime = get_absolute_time();
-  printf("%d %d writing the value \n", buf, EEPROM_CO2_ADDR);
-
 }
 
 
@@ -146,7 +142,6 @@ void SensorHandler::updateControl() {
   const float currentCo2 = gmpSensor->readMeasuredCO2();
 
   if (!std::isnan(currentCo2)) {
-    // printf(" %d %f", currentCo2, targetCo2);
     handleValveAndFanLogic(currentCo2, targetCo2);
   } else {
   }

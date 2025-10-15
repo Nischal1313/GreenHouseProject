@@ -80,20 +80,22 @@ void SetCredentials::loadFromEEPROM() {
 
 void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
   const uint16_t offset = (field == CredentialField::WIFI_NAME)
-                            ? EEPROM_WIFI_NAME_ADDR
-                            : EEPROM_WIFI_PASSWD_ADDR;
+                              ? EEPROM_WIFI_NAME_ADDR
+                              : EEPROM_WIFI_PASSWD_ADDR;
 
   const auto &buf = buffers[static_cast<int>(field)];
   MutexGuard lock(eepromMutex);
-
   if (!lock.owns_lock()) {
     return;
   }
 
   uint8_t writeData[FIELD_SIZE]{0};
-  const size_t len = std::min(buf.size(),
-                              static_cast<size_t>(FIELD_SIZE - 1));
+  const size_t len = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
   memcpy(writeData, buf.c_str(), len);
+
+  if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE)) {
+    printf("[SetCredentials] Failed to write field %d to EEPROM\n", static_cast<int>(field));
+  }
 }
 
 
@@ -134,7 +136,6 @@ void SetCredentials::clearCurrentField() {
   auto &buf = currentBuffer();
   if (!buf.empty()) {
     buf.clear();
-    saveFieldToEEPROM(currentField);
   }
 }
 
@@ -152,7 +153,6 @@ const char *SetCredentials::getCurrentFieldName() const {
 }
 
 void SetCredentials::nextField() {
-  saveFieldToEEPROM(currentField);
   currentField = (currentField == CredentialField::WIFI_NAME)
                    ? CredentialField::WIFI_PASSWD
                    : CredentialField::WIFI_NAME;
@@ -164,11 +164,4 @@ void SetCredentials::nextCharset() {
   charsetMode = static_cast<CharsetMode>(
     (static_cast<int>(charsetMode) + 1) % 3);
   currentCharIndex = 0;
-}
-
-void SetCredentials::saveAllToEEPROM() const {
-  saveFieldToEEPROM(CredentialField::WIFI_NAME);
-  vTaskDelay(pdMS_TO_TICKS(EEPROM_SLEEP_MS));
-  saveFieldToEEPROM(CredentialField::WIFI_PASSWD);
-  vTaskDelay(pdMS_TO_TICKS(EEPROM_SLEEP_MS));
 }

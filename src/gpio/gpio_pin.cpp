@@ -26,7 +26,6 @@ GPIOPin::GPIOPin(const uint pin, const GPIOMode mode,const GPIOPull pull,const b
 
     lastChangeTime = get_absolute_time();
     pressStartTime = get_absolute_time();
-    printf("[GPIO] init happened");
 }
 
 // --- READ/WRITE ---

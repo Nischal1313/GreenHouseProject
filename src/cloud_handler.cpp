@@ -131,24 +131,10 @@ void CloudClass::sendData(const int co2, const int temperature,
   );
 
   printf(
-    "Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
+    "// needs to be fixed.Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
     co2, temperature, humidity, fanSpeed, co2Setpoint);
 
   memset(tls_client_response, 0, sizeof(tls_client_response));
-
-  const bool success = run_tls_client_test(
-    reinterpret_cast<const uint8_t *>(root_ca),
-    strlen(root_ca) + 1,
-    TLS_CLIENT_SERVER,
-    request,
-    TLS_CLIENT_TIMEOUT_SECS
-  );
-
-  if (success) {
-    printf("Data sent successfully to ThingSpeak\n");
-  } else {
-    printf("Failed to send data to ThingSpeak\n");
-  }
 }
 
 int CloudClass::parseTalkBackCommand() {
@@ -171,21 +157,19 @@ int CloudClass::parseTalkBackCommand() {
 
   printf("TalkBack command received: %s\n", cmd);
 
-  // Parse SETPOINT=<value> command
   if (strncmp(cmd, "SETPOINT=", 9) == 0) {
     int value = atoi(cmd + 9);
     if (value >= MIN_CO2_SETPOINT && value <= MAX_CO2_SETPOINT) {
       return value;
-    } else {
-      printf("CO2 setpoint %d out of valid range (%d-%d)\n",
-             value, MIN_CO2_SETPOINT, MAX_CO2_SETPOINT);
     }
+    printf("CO2 setpoint %d out of valid range (%d-%d)\n",
+           value, MIN_CO2_SETPOINT, MAX_CO2_SETPOINT);
   }
 
-  return -1; // Invalid or out of range
+  return -1;
 }
 
-void CloudClass::checkTalkBackQueue() {
+void CloudClass::checkTalkBackQueue() const {
   char request[256];
 
   snprintf(request, sizeof(request),
@@ -247,7 +231,8 @@ void CloudClass::taskEntry(void *pvParameters) {
 
 
     if (!network_connected) {
-      printf("Connecting to WiFi...\n");
+      printf("network not connected. \n");
+
       connect();
       network_connected = true;
       transmit = true;

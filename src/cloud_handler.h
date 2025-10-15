@@ -38,7 +38,7 @@ public:
   static void sendData(int co2, int temperature, int humidity,
                        int fanSpeed, int co2Setpoint);
 
-  void checkTalkBackQueue();
+  void checkTalkBackQueue() const;
 
   static void taskEntry(void *pvParameters);
 
