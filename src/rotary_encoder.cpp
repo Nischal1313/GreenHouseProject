@@ -1,5 +1,6 @@
 #include "rotary_encoder.h"
 
+
 /*
  * Gray-code rotary encoder logic with button press/hold and debouncing.
  *
@@ -133,4 +134,13 @@ bool RotaryEncoder::buttonHeld() {
     return true;
   }
   return false;
+}
+
+
+void RotaryEncoder::taskEntry(void *pvParameters) {
+  auto *encoder = static_cast<RotaryEncoder *>(pvParameters);
+  while (true) {
+    encoder->update();
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
 }

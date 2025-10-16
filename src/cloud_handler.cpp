@@ -5,6 +5,8 @@
 #include "sensor_handler.h"
 #include "setCredentials.h"
 
+SemaphoreHandle_t CloudClass::tlsMutex = nullptr;
+
 CloudClass::CloudClass(
   const std::shared_ptr<SensorHandler> &sensorHandler,
   const SemaphoreHandle_t eepromMutex, Eeprom &eeprom)
@@ -12,6 +14,13 @@ CloudClass::CloudClass(
     eepromMutex(eepromMutex) {
   memset(ssid, 0, sizeof(ssid));
   memset(password, 0, sizeof(password));
+
+  if (tlsMutex == nullptr) {
+    tlsMutex = xSemaphoreCreateMutex();
+    if (tlsMutex == nullptr) {
+      printf("[Cloud] FATAL: Failed to create TLS mutex\n");
+    }
+  }
 }
 
 
@@ -43,7 +52,6 @@ void CloudClass::loadCredentialsFromEEPROM() {
     return;
   }
 
-  // SSID
   if (eeprom->readBlock(EEPROM_WIFI_NAME_ADDR, tmp,
                         FIELD_SIZE)) {
     tmp[FIELD_SIZE - 1] = '\0';
@@ -51,7 +59,7 @@ void CloudClass::loadCredentialsFromEEPROM() {
     ssid[sizeof(ssid) - 1] = '\0';
   }
 
-  // Password
+
   if (eeprom->readBlock(EEPROM_WIFI_PASSWD_ADDR, tmp,
                         FIELD_SIZE)) {
     tmp[FIELD_SIZE - 1] = '\0';
@@ -83,41 +91,27 @@ void CloudClass::connect() {
   printf("WiFi connected successfully\n");
 }
 
-void CloudClass::sendData(const int co2, const int temperature,
+
+bool CloudClass::sendData(const int co2, const int temperature,
                           const int humidity, const int fanSpeed,
                           const int co2Setpoint) {
-  char request[512];
 
-  // Build POST request with all 5 fields and TalkBack key
-  snprintf(request, sizeof(request),
-           "POST /update.json HTTP/1.1\r\n"
-           "Host: api.thingspeak.com\r\n"
-           "User-Agent: PicoW\r\n"
-           "Content-Type: application/x-www-form-urlencoded\r\n"
-           "Connection: close\r\n"
-           "Content-Length: %d\r\n"
-           "\r\n"
-           "api_key=%s&field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&talkback_key=%s",
-           0, // Content-Length placeholder
-           THINGSPEAK_WRITE_API_KEY,
-           co2, // field1: CO2 level (ppm)
-           humidity, // field2: Relative humidity
-           temperature, // field3: Temperature
-           fanSpeed, // field4: Fan speed (0-100%)
-           co2Setpoint, // field5: CO2 setpoint (ppm)
-           TALKBACK_API_KEY
-  );
+  const MutexGuard lock(tlsMutex);
+  if (!lock.owns_lock()) {
+    printf("[Cloud] Failed to acquire TLS mutex for sendData\n");
+    return false;
+  }
 
-  // Calculate actual content length
   char body[256];
   snprintf(body, sizeof(body),
            "api_key=%s&field1=%d&field2=%d&field3=%d&field4=%d&field5=%d&talkback_key=%s",
-           THINGSPEAK_WRITE_API_KEY, co2, humidity, temperature,
-           fanSpeed, co2Setpoint, TALKBACK_API_KEY
-  );
+           THINGSPEAK_WRITE_API_KEY,
+           co2, humidity, temperature, fanSpeed, co2Setpoint,
+           TALKBACK_API_KEY);
+
   const int content_length = strlen(body);
 
-  // Rebuild with correct content length
+  char request[512];
   snprintf(request, sizeof(request),
            "POST /update.json HTTP/1.1\r\n"
            "Host: api.thingspeak.com\r\n"
@@ -127,27 +121,48 @@ void CloudClass::sendData(const int co2, const int temperature,
            "Content-Length: %d\r\n"
            "\r\n"
            "%s",
-           content_length, body
-  );
+           content_length, body);
 
-  printf(
-    "// needs to be fixed.Sending data to ThingSpeak: CO2=%d, Temp=%d, RH=%d, Fan=%d%%, Setpoint=%d\n",
-    co2, temperature, humidity, fanSpeed, co2Setpoint);
+  printf("[Cloud] Sending data to ThingSpeak...\n");
 
   memset(tls_client_response, 0, sizeof(tls_client_response));
+
+
+  bool success = run_tls_client_test(
+    reinterpret_cast<const uint8_t *>(root_ca),
+    strlen(root_ca) + 1,
+    "api.thingspeak.com",
+    request,
+    TLS_CLIENT_TIMEOUT_SECS);
+
+  if (!success) {
+    printf("[Cloud] Failed to send data to ThingSpeak.\n");
+    return false;
+  }
+
+
+  if (strstr(tls_client_response, "HTTP/1.1 200 OK") ||
+      strstr(tls_client_response, "HTTP/1.0 200 OK")) {
+    printf("[Cloud] Data sent successfully to ThingSpeak.\n");
+    return true;
+  }
+
+  printf("[Cloud] ThingSpeak response did not confirm success.\n");
+  printf("[Cloud] Response: %s\n", tls_client_response);
+  return false;
 }
 
 int CloudClass::parseTalkBackCommand() {
-  // Look for the command_string field in JSON response
+
   const char *cmd_start = strstr(tls_client_response,
                                  "\"command_string\":\"");
   if (!cmd_start) {
-    return -1; // No command found
+    return -1;
   }
 
   cmd_start += strlen("\"command_string\":\"");
 
-  // Extract command string
+
   char cmd[64];
   int i = 0;
   while (*cmd_start && *cmd_start != '"' && i < 63) {
@@ -170,6 +185,14 @@ int CloudClass::parseTalkBackCommand() {
 }
 
 void CloudClass::checkTalkBackQueue() const {
+
+  const MutexGuard lock(tlsMutex);
+  if (!lock.owns_lock()) {
+    printf(
+      "[Cloud] Failed to acquire TLS mutex for checkTalkBackQueue\n");
+    return;
+  }
+
   char request[256];
 
   snprintf(request, sizeof(request),
@@ -199,72 +222,92 @@ void CloudClass::checkTalkBackQueue() const {
 
   if (newSetPoint <= MAX_CO2_SETPOINT && newSetPoint >=
       MIN_CO2_SETPOINT) {
-    // call member function on this object
     this->storeSetpointToEEPROM(newSetPoint);
-  } else {
-    printf("[Cloud] No valid TalkBack setpoint found (%d)\n",
-           newSetPoint);
+  }
+}
+
+void CloudClass::dataSendTaskEntry(void *pvParameters) {
+  auto *self = static_cast<CloudClass *>(pvParameters);
+  self->dataSendTask();
+}
+
+[[noreturn]] void CloudClass::dataSendTask() {
+  printf("[DataSend] Task started\n");
+
+  while (true) {
+    if (!network_connected) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+
+    if (!transmit) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+
+    int co2_value, temp_value, humidity_value, fan_speed_value,
+        setpoint_value; {
+      const SensorValues readings = resources->getReadings();
+
+      // Extract individual values and convert to int
+      co2_value = static_cast<int>(readings.co2);
+      temp_value = static_cast<int>(readings.temperature);
+      humidity_value = static_cast<int>(readings.humidity);
+      fan_speed_value = static_cast<int>(readings.fanSpeed);
+      setpoint_value = static_cast<int>(readings.targetCo2);
+    }
+
+    if (sendData(co2_value, temp_value, humidity_value,
+                 fan_speed_value, setpoint_value)) {
+      printf("\n");
+      printf("[DataSend] Transmission acknowledged.\n");
+      printf("\n");
+    } else {
+      printf("[DataSend] Transmission failed or unverified.\n");
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(DATA_SEND_DELAY));
   }
 }
 
 
-void CloudClass::taskEntry(void *pvParameters) {
+void CloudClass::talkbackPollTaskEntry(void *pvParameters) {
   auto *self = static_cast<CloudClass *>(pvParameters);
-  self->Cloudtask();
+  self->talkbackPollTask();
 }
 
-[[noreturn]] void CloudClass::Cloudtask() {
-  printf("cloud task ran");
-  bool network_connected = false;
+[[noreturn]] void CloudClass::talkbackPollTask() {
+  printf("[TalkBack] Task started\n");
 
-  printf("CloudTask started\n");
 
   while (true) {
     if (ssid[0] == '\0') {
       loadCredentialsFromEEPROM();
       if (ssid[0] == '\0') {
-        printf("Waiting for WiFi credentials in EEPROM...\n");
+        printf(
+          "[TalkBack] Waiting for WiFi credentials in EEPROM...\n");
         vTaskDelay(pdMS_TO_TICKS(5000));
         continue;
       }
     }
 
+    if (network_connected) {
+      break;
+    }
 
     if (!network_connected) {
-      printf("network not connected. \n");
-
+      printf("[TalkBack] Network not connected, connecting...\n");
       connect();
       network_connected = true;
       transmit = true;
     }
+  }
 
-    // Transmit data if connected
-    if (transmit) {
-      // Read current sensor values with mutex protection
-      int co2_value, temp_value, humidity_value, fan_speed_value,
-          setpoint_value; {
-        // Get all sensor readings in one call
-        const SensorValues readings = resources->getReadings();
 
-        // Extract individual values and convert to int
-        co2_value = static_cast<int>(readings.co2);
-        temp_value = static_cast<int>(readings.temperature);
-        humidity_value = static_cast<int>(readings.humidity);
-        fan_speed_value = static_cast<int>(readings.fanSpeed);
-        setpoint_value = static_cast<int>(readings.targetCo2);
-      }
+  printf("[TalkBack] Starting command polling loop\n");
+  while (true) {
+    checkTalkBackQueue();
 
-      // Send data to ThingSpeak and check for new commands
-      sendData(co2_value, temp_value, humidity_value, fan_speed_value,
-               setpoint_value);
-
-      // Wait a bit before checking TalkBack (ThingSpeak rate limit)
-      vTaskDelay(pdMS_TO_TICKS(5000));
-
-      // Check for new commands from TalkBack
-      checkTalkBackQueue();
-    }
-    // Wait before next update cycle
-    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY));
+    vTaskDelay(pdMS_TO_TICKS(TALKBACK_POLL_DELAY));
   }
 }

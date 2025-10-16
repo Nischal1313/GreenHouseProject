@@ -1,6 +1,8 @@
 #pragma once
 
 #include "pico/stdlib.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 class RotaryEncoder {
 public:
@@ -8,7 +10,7 @@ public:
                          uint pinButton = 12,
                          uint32_t debounceTime = 5, // ms
                          uint32_t holdTime = 1000); // ms
-
+  static void taskEntry(void *pvParameters);
   void update();
   //All four bool functions 'consume' the event
   bool rotatedCW();

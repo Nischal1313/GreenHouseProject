@@ -24,14 +24,14 @@ uint32_t read_runtime_ctr(void) {
 }
 }
 
-// TODO move this into the encoder task that is implemented there.
-[[noreturn]] void encoderUpdateTask(void *pvParameters) {
-  auto *encoder = static_cast<RotaryEncoder *>(pvParameters);
-  while (true) {
-    encoder->update();
-    vTaskDelay(pdMS_TO_TICKS(5));
-  }
-}
+// // TODO move this into the encoder task that is implemented there.
+// [[noreturn]] void encoderUpdateTask(void *pvParameters) {
+//   auto *encoder = static_cast<RotaryEncoder *>(pvParameters);
+//   while (true) {
+//     encoder->update();
+//     vTaskDelay(pdMS_TO_TICKS(5));
+//   }
+// }
 
 
 [[noreturn]] int main() {
@@ -90,7 +90,7 @@ uint32_t read_runtime_ctr(void) {
   displayManager.setParams(&displayParams);
 
 
-  xTaskCreate(encoderUpdateTask, "EncoderTask", 1024,
+  xTaskCreate(RotaryEncoder::taskEntry, "EncoderTask", 1024,
               encoder.get(), 3, nullptr);
 
   xTaskCreate(SensorHandler::controlTask, "SensorLogic", 2048,
@@ -102,9 +102,27 @@ uint32_t read_runtime_ctr(void) {
   xTaskCreate(InputManager::taskEntry, "InputHandler", 1024,
               inputManager.get(), 3, nullptr);
 
-  xTaskCreate(CloudClass::taskEntry, "CloudHandler", 1024,
-              cloudHandler.get(), 3, nullptr);
+  // xTaskCreate(CloudClass::taskEntry, "CloudHandler", 1024,
+  //             cloudHandler.get(), 3, nullptr);
 
+  xTaskCreate(
+    CloudClass::dataSendTaskEntry,
+    "DataSendTask",
+    2048,  // Stack size
+    cloudHandler.get(),
+    2,     // Priority (higher than TalkBack to ensure data sends)
+    nullptr
+  );
+
+  // Create TalkBack polling task (runs every 5 seconds)
+  xTaskCreate(
+    CloudClass::talkbackPollTaskEntry,
+    "TalkBackTask",
+    2048,  // Stack size
+    cloudHandler.get(),
+    1,     // Priority (lower than data send)
+    nullptr
+  );
   vTaskStartScheduler();
 
   while (true) {

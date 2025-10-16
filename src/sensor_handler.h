@@ -72,7 +72,7 @@ private:
   static constexpr uint ACCEPTED_RANGE = 10;
   static constexpr uint FULL_SPEED = 100;
   static constexpr uint IDLE_SPEED = 0;
-  static constexpr uint VALVE_IDLE_TIME = 5'000; // ms
+  static constexpr uint VALVE_IDLE_TIME = 30'000; // ms
   static constexpr uint MAX_VALVE_OPEN_TIME = 2'000; // ms
   static constexpr uint CONTROL_LOOP_DELAY = 300; // ms
   static constexpr uint16_t MIN_CO2 = 200;
