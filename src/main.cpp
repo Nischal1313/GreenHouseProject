@@ -24,15 +24,6 @@ uint32_t read_runtime_ctr(void) {
 }
 }
 
-// // TODO move this into the encoder task that is implemented there.
-// [[noreturn]] void encoderUpdateTask(void *pvParameters) {
-//   auto *encoder = static_cast<RotaryEncoder *>(pvParameters);
-//   while (true) {
-//     encoder->update();
-//     vTaskDelay(pdMS_TO_TICKS(5));
-//   }
-// }
-
 
 [[noreturn]] int main() {
   stdio_init_all();
