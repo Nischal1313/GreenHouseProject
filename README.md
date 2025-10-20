@@ -1,6 +1,6 @@
 # Ventilation Control System  
 > A FreeRTOS-based CO₂ Fertilization Controller for Smart Greenhouses  
-> **Author**: Nischal Gautam | **Platform**: Raspberry Pi Pico (RP2040) | **Language**: C++ 
+> **Author**: Nischal Gautam | **Platform**: Raspberry Pi Pico | **Language**: C++ 
 
 ## Overview
 A FreeRTOS-based embedded system written in C++ for monitoring temperature, humidity, and CO₂ levels.
@@ -8,13 +8,6 @@ Developed during the third year, first period of the **Metropolia ICT – IoT Em
 
 The system communicates with sensors via **Modbus** and can send and receive data from a **cloud service**.
 Network parameters are configurable locally and stored in EEPROM.
-
----
-
-## Documentation
-The project includes:
-- Class diagram
-- Implementation principles
 
 ---
 
@@ -50,28 +43,34 @@ You can then remotely view the values in the cloud by logging into ThingSpeak.
 ---
 
 ## Cloud Environment Preview
-![View one](view1.png)
-![View two](view2.png)
-![View three](view3.png)
+![View one](photos/view1.png)
+![View two](photos/view2.png)
+![View three](photos/view3.png)
 ---
 More data can be sent to the cloud if the need would arise.
 
 
-## The Simulated Environment, Test Device & Class diagram
+## System Design
 
 ## Class Diagram
-![Class Diagram](classDiagram.png)
+![Class Diagram](photos/diagram.drawio.png)
+
+
+## Flow Chart 
+![flow chart](photos/flowchart.drawio.png)
+
+## The Simulated Environment & Test Device
 
 ## Test Kit
 This is the kit we used to demo our project. It was shown initially without the clear plastic part, which was added for the final demonstration.
 
 In this kit, the sensors are reading real data and are not simulated.
-![Test Kit](demo.jpg)
+![Test Kit](photos/demo.jpg)
 
 ### Demo Environment
 
-![Demo Kit](realKit.jpg)
-![Plastic House](greenHouse.jpg)
+![Demo Kit](photos/realKit.jpg)
+![Plastic House](photos/greenHouse.jpg)
 
 ---
 
@@ -81,9 +80,9 @@ The system runs on a **Raspberry Pi Pico** and performs the following functions:
 - Measures **CO₂ concentration** (GMP252 sensor)
 - Measures **temperature and humidity** (HMP60 sensor)
 - Controls a **ventilation fan** (Produal MIO actuator)
-- Sends the values to the display and to the cloud at regular intervals. 
-- Handles the button presses encoder presses along the encoder rotation. 
-- Saves ssid to the EEPROM along with the last desired C02 value set by the user. 
+- Updates the values to the display and to the cloud at regular intervals. 
+- Handles the presses along with the encoder rotation. 
+- Saves SSID to the EEPROM along with the last desired C02 value set by the user. 
 
 ---
 
@@ -95,5 +94,11 @@ Each class is responsible for a specific subsystem or hardware abstraction.
 **Examples:**
 - **GPIO**, **Encoder**, and **InputManager** classes handle their respective low-level functions.
 - All sensor classes inherit from a **parent base class** that provides shared logic and interfaces.
+- Network class has tasks for sending and receive.
+- Display task get all of its values to show from two different classes, depending on if the sensors need to be seen or the Wi-Fi menu. 
 
-Due to time constraints and working alone on the project, strict SRP adherence is not to the level I would have liked, but the structure remains modular and maintainable.
+Due to time constraints and working alone on the project, SRP adherence is not to the level I would have liked, but the structure remains modular, readable and maintainable.
+
+For example I would have liked to make the setCredentials.cpp and .h files.Even more modular with handling button presses separately their own class and then setting and getting the credentials their own classes also.
+
+The class for the network setting could be improved with the same kind of task separation. The parsing handled in a different class rather than on the network class. 
