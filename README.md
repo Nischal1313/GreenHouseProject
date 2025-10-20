@@ -28,8 +28,8 @@ A **greenhouse simulator** device was used to replicate realistic environmental 
 - **Button 6** is useful when inside the Wi-Fi menu section. There you can choose which field to edit.
 - **Button 9** cycles through character sets (capital letters, lowercase letters, numbers, and special characters) for text input.
 
-Pressing the encoder confirms the current character. To reset the characters, filling the current field will reset field.
-If you want to adjust the desired CO₂ setpoint, you can do so from the main menu by rotating the encoder.
+he field automatically resets when you complete filling it.
+If you want to adjust the desired CO2 setpoint, you can do so from the main menu by rotating the encoder.
 
 ### Remote Adjustment
 The device can be adjusted remotely using a curl command:
@@ -47,7 +47,8 @@ You can then remotely view the values in the cloud by logging into ThingSpeak.
 ![View two](photos/view2.png)
 ![View three](photos/view3.png)
 ---
-More data can be sent to the cloud if the need would arise.
+
+More data can be sent to the cloud should the need arise.
 
 
 ## System Design
@@ -80,9 +81,9 @@ The system runs on a **Raspberry Pi Pico** and performs the following functions:
 - Measures **CO₂ concentration** (GMP252 sensor)
 - Measures **temperature and humidity** (HMP60 sensor)
 - Controls a **ventilation fan** (Produal MIO actuator)
-- Updates the values to the display and to the cloud at regular intervals. 
-- Handles the presses along with the encoder rotation. 
-- Saves SSID to the EEPROM along with the last desired C02 value set by the user. 
+- Updates the values on the display and in the cloud at regular intervals 
+- Handles button presses along with encoder rotation 
+- Saves the SSID and the last desired CO2 value to EEPROM 
 
 ---
 
@@ -97,8 +98,8 @@ Each class is responsible for a specific subsystem or hardware abstraction.
 - Network class has tasks for sending and receive.
 - Display task get all of its values to show from two different classes, depending on if the sensors need to be seen or the Wi-Fi menu. 
 
-Due to time constraints and working alone on the project, SRP adherence is not to the level I would have liked, but the structure remains modular, readable and maintainable.
+Due to time constraints and working alone on the project, SRP adherence is not to the level I would have liked, but the structure remains modular, readable, and maintainable.
 
-For example I would have liked to make the setCredentials.cpp and .h files.Even more modular with handling button presses separately their own class and then setting and getting the credentials their own classes also.
+For example, I would have liked to make the setCredentials.cpp and .h files even more modular. Button presses could be handled in a separate class, while credential setting and getting could each have their own classes. I would hev improved the display and the cloud classes in a similar way.
 
-The class for the network setting could be improved with the same kind of task separation. The parsing handled in a different class rather than on the network class. 
+The network settings class could be improved with similar task separation, with parsing handled in a separate class rather than within the network class.
