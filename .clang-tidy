@@ -1,0 +1,114 @@
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  google-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -cert-dcl21-cpp,
+  -cert-dcl50-cpp,
+  -cert-err58-cpp,
+  -cert-msc30-cpp,
+  -cert-msc50-cpp,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-init-variables,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-vararg,
+  -fuchsia-*,
+  -google-readability-todo,
+  -google-runtime-int,
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-redundant-access-specifiers,
+  -readability-use-anyofallof,
+
+WarningsAsErrors: >
+  bugprone-easily-swappable-parameters,
+  bugprone-sizeof-expression,
+  bugprone-unchecked-optional-access,
+  bugprone-undefined-memory-manipulation,
+  bugprone-unhandled-self-assignment,
+  bugprone-unused-return-value,
+  cert-dcl03-c,
+  cert-dcl37-c,
+  cert-env33-c,
+  cert-flp30-c,
+  cert-oop54-cpp,
+  clang-analyzer-core-*,
+  clang-analyzer-cplusplus-*,
+  clang-analyzer-deadcode-*,
+  clang-analyzer-optin.cplusplus.UninitializedObject,
+  clang-analyzer-security-*,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-special-member-functions,
+  cppcoreguidelines-virtual-class-destructor,
+  misc-const-correctness,
+  misc-definitions-in-headers,
+  misc-static-assert,
+  misc-throw-by-value-catch-by-reference,
+  misc-uniqueptr-reset-release,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  modernize-use-noexcept,
+  modernize-use-nodiscard,
+  modernize-use-override,
+  performance-no-int-to-ptr,
+  performance-move-const-arg,
+  performance-unnecessary-copy-initialization,
+  performance-unnecessary-value-param,
+  portability-restrict-system-includes,
+  readability-avoid-const-params-in-decls,
+  readability-delete-null-pointer,
+  readability-duplicate-include,
+  readability-else-after-return,
+  readability-function-cognitive-complexity,
+  readability-inconsistent-declaration-parameter-name,
+  readability-make-member-function-const,
+  readability-named-parameter,
+  readability-non-const-parameter,
+  readability-redundant-*,
+  readability-simplify-boolean-expr,
+  readability-static-definition-in-anonymous-namespace,
+  readability-uniqueptr-delete-release,
+
+HeaderFilterRegex: 'src/.*\.h(pp)?'
+
+CheckOptions:
+  readability-identifier-naming.CaseSensitive:                1
+  readability-identifier-naming.ClassCase:                    CamelCase
+  readability-identifier-naming.StructCase:                   CamelCase
+  readability-identifier-naming.EnumCase:                     CamelCase
+  readability-identifier-naming.FunctionCase:                 camelBack
+  readability-identifier-naming.ParameterCase:                camelBack
+  readability-identifier-naming.VariableCase:                 camelBack
+  readability-identifier-naming.ConstantCase:                 UPPER_CASE
+  readability-identifier-naming.MemberCase:                   camelBack
+  readability-identifier-naming.MemberSuffix:                 M
+  readability-identifier-naming.ParameterSuffix:              P
+  readability-identifier-naming.StaticSuffix:                 S
+  readability-identifier-naming.GlobalSuffix:                 G
+  readability-identifier-naming.EnumConstantCase:             UPPER_CASE
+  readability-identifier-naming.MethodCase:                   camelBack
+  readability-identifier-naming.PointerVariablePrefix:        p
+  readability-identifier-naming.ReferenceVariablePrefix:      r
+  readability-identifier-naming.ConstexprVariableCase:        UPPER_CASE
+  readability-identifier-naming.ConstexprVariablePrefix:      ''
+
+  bugprone-easily-swappable-parameters.MinimumLength:         3
+  readability-function-cognitive-complexity.Threshold:        25
+  readability-function-size.LineThreshold:                    70
