@@ -1,14 +1,13 @@
 add_executable(${ProjectName}
         main.cpp
-        critical_section.cpp
         Fmutex.cpp
         Fmutex.h
 
         ipstack/IPStack.cpp
         ipstack/IPStack.h
         ipstack/lwipopts.h
-        ipstack/tls_common.c
-        ipstack/picow_tls_client.c
+        ipstack/tls_common.cpp
+        ipstack/picow_tls_client.cpp
         ipstack/lwipopts_tls.h
 
         i2c/PicoI2C.cpp
@@ -48,6 +47,7 @@ add_executable(${ProjectName}
         setCredentials.cpp
         sensor_handler.cpp
         cloud_handler.cpp
+        system_state.cpp
 
 )
 

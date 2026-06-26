@@ -5,55 +5,60 @@
 #include "projdefs.h"
 #include "semphr.h"
 
-/**
- * @brief RAII wrapper for FreeRTOS mutexes.
- *
- * Acquires the given mutex in the constructor,
- * releases it in the destructor.
- * Ensures safe and exception-proof locking for shared resources.
- */
-class MutexGuard {
+class MutexGuard
+{
 public:
-  explicit MutexGuard(const SemaphoreHandle_t mutex)
-    : mutex(mutex), locked(false) {
-    if (mutex && xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE) {
-      locked = true;
+    explicit MutexGuard(SemaphoreHandle_t mutexP) :
+        mutexM{mutexP},
+        lockedM{false}
+    {
+        if (mutexM && xSemaphoreTake(mutexM, portMAX_DELAY) == pdTRUE)
+        {
+            lockedM = true;
+        }
     }
-  }
 
-  // Destructor releases the mutex if locked
-  ~MutexGuard() {
-    if (locked) {
-      xSemaphoreGive(mutex);
+    ~MutexGuard()
+    {
+        if (lockedM)
+        {
+            xSemaphoreGive(mutexM);
+        }
     }
-  }
 
-  [[nodiscard]] bool owns_lock() const { return locked; }
-
-  // Non-copyable
-  MutexGuard(const MutexGuard &) = delete;
-
-  MutexGuard &operator=(const MutexGuard &) = delete;
-
-  // Movable
-  MutexGuard(MutexGuard &&other) noexcept
-    : mutex(other.mutex), locked(other.locked) {
-    other.locked = false;
-  }
-
-  MutexGuard &operator=(MutexGuard &&other) noexcept {
-    if (this != &other) {
-      if (locked) {
-        xSemaphoreGive(mutex);
-      }
-      mutex = other.mutex;
-      locked = other.locked;
-      other.locked = false;
+    [[nodiscard]] bool owns_lock() const
+    {
+        return lockedM;
     }
-    return *this;
-  }
+
+    MutexGuard(MutexGuard const &) = delete;
+    MutexGuard &operator=(MutexGuard const &) = delete;
+
+    MutexGuard(MutexGuard &&otherP) noexcept :
+        mutexM{otherP.mutexM},
+        lockedM{otherP.lockedM}
+    {
+        otherP.lockedM = false;
+    }
+
+    MutexGuard &operator=(MutexGuard &&otherP) noexcept
+    {
+        if (this != &otherP)
+        {
+            if (lockedM)
+            {
+                xSemaphoreGive(mutexM);
+            }
+
+            mutexM = otherP.mutexM;
+            lockedM = otherP.lockedM;
+            otherP.lockedM = false;
+        }
+
+        return *this;
+    }
 
 private:
-  SemaphoreHandle_t mutex;
-  bool locked;
+    SemaphoreHandle_t mutexM;
+    bool lockedM;
 };

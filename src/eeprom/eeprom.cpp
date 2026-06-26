@@ -1,135 +1,157 @@
 #include "eeprom.h"
 
 #include <algorithm>
-
 #include "pico/stdlib.h"
 
-Eeprom::Eeprom(i2c_inst_t *i2cPort, uint8_t eepromAddr, uint8_t addressWidth)
-    : i2cPort(i2cPort), eepromAddr(eepromAddr), addressWidth(addressWidth) {}
+Eeprom::Eeprom(i2c_inst_t *pI2cPortP, uint8_t eepromAddrP, uint8_t addressWidthP) :
+    i2cPortM{pI2cPortP},
+    eepromAddrM{eepromAddrP},
+    addressWidthM{addressWidthP}
+{
+}
 
-/**
- * @brief Helper: convert 16-bit/8-bit address into bytes
- */
-void Eeprom::buildAddressBytes(int addr, uint8_t *out) const {
-    if (addressWidth == 2) {
-        out[0] = static_cast<uint8_t>((addr >> 8) & 0xFF);
-        out[1] = static_cast<uint8_t>(addr & 0xFF);
-    } else {
-        out[0] = static_cast<uint8_t>(addr & 0xFF);
+void Eeprom::buildAddressBytes(int addrP, uint8_t *pOutP) const
+{
+    if (addressWidthM == 2)
+    {
+        pOutP[0] = static_cast<uint8_t>((addrP >> 8) & 0xFF);
+        pOutP[1] = static_cast<uint8_t>(addrP & 0xFF);
+    }
+    else
+    {
+        pOutP[0] = static_cast<uint8_t>(addrP & 0xFF);
     }
 }
 
-int Eeprom::readByte(const int addr) const {
+int Eeprom::readByte(int addrP) const
+{
     uint8_t addrBuf[2];
-    buildAddressBytes(addr, addrBuf);
+    buildAddressBytes(addrP, addrBuf);
+
+    int result;
 
     uint8_t data = 0;
-    int written = i2c_write_blocking(i2cPort, eepromAddr, addrBuf, addressWidth, true);
-    if (written != addressWidth) {
-        return -1; // Failed to send address
+    int written = i2c_write_blocking(i2cPortM, eepromAddrM, addrBuf, addressWidthM, true);
+
+    if (written != addressWidthM)
+    {
+        result = -1;
+    }
+    else
+    {
+        int read = i2c_read_blocking(i2cPortM, eepromAddrM, &data, 1, false);
+
+        if (read != 1)
+        {
+            result = -1;
+        }
+        else
+        {
+            result = data;
+        }
     }
 
-    int read = i2c_read_blocking(i2cPort, eepromAddr, &data, 1, false);
-    if (read != 1) {
-        return -1; // Failed to read
-    }
-
-    return data;
+    return result;
 }
 
-bool Eeprom::writeByte(const int addr, const uint8_t data) const {
-    int existing = readByte(addr);
-    if (existing == data) {
-        return true; // Skip write if value unchanged
+bool Eeprom::writeByte(int addrP, uint8_t dataP) const
+{
+    bool result;
+
+    int existing = readByte(addrP);
+
+    if (existing == static_cast<int>(dataP))
+    {
+        result = true;
+    }
+    else
+    {
+        uint8_t buf[3];
+        buildAddressBytes(addrP, buf);
+        buf[addressWidthM] = dataP;
+
+        int written = i2c_write_blocking(
+            i2cPortM,
+            eepromAddrM,
+            buf,
+            addressWidthM + 1,
+            false);
+
+        if (written != (addressWidthM + 1))
+        {
+            result = false;
+        }
+        else
+        {
+            while (i2c_write_blocking(i2cPortM, eepromAddrM, buf, addressWidthM, true) < 0)
+            {
+                sleep_ms(1);
+            }
+
+            result = true;
+        }
     }
 
-    uint8_t buf[3];
-    buildAddressBytes(addr, buf);
-    buf[addressWidth] = data;
-
-    int written = i2c_write_blocking(i2cPort, eepromAddr, buf, addressWidth + 1, false);
-    if (written != (addressWidth + 1)) {
-        return false;
-    }
-
-    // Wait until EEPROM is ready (poll ACK instead of fixed delay)
-    while (i2c_write_blocking(i2cPort, eepromAddr, buf, addressWidth, true) < 0) {
-        sleep_ms(1);
-    }
-
-    return true;
+    return result;
 }
 
-bool Eeprom::readBlock(const int addr, uint8_t *buffer, const size_t length) const {
+bool Eeprom::readBlock(int addrP, uint8_t *pBufferP, size_t lengthP) const
+{
+    bool result;
+
     uint8_t addrBuf[2];
-    buildAddressBytes(addr, addrBuf);
+    buildAddressBytes(addrP, addrBuf);
 
-    if (i2c_write_blocking(i2cPort, eepromAddr, addrBuf, addressWidth, true) != addressWidth) {
-        return false;
+    if (i2c_write_blocking(i2cPortM, eepromAddrM, addrBuf, addressWidthM, true) != addressWidthM)
+    {
+        result = false;
+    }
+    else
+    {
+        result = i2c_read_blocking(i2cPortM, eepromAddrM, pBufferP, lengthP, false)
+            == static_cast<int>(lengthP);
     }
 
-    return (i2c_read_blocking(i2cPort, eepromAddr, buffer, length, false) == (int)length);
+    return result;
 }
 
-
-// bool Eeprom::writeBlock(int addr, const uint8_t *buffer, size_t length) {
-//     // We assume the caller (RotaryEncoder) is only writing 2 bytes (CO2 value),
-//     // which fits within a single page write.
-//
-//     // Calculate the necessary buffer size: 2 address bytes + data length
-//     const size_t i2c_buffer_size = addressWidth + length;
-//     uint8_t i2c_buffer[4]; // Max size is 2 (addr) + 2 (data) = 4
-//
-//     if (i2c_buffer_size > sizeof(i2c_buffer)) {
-//         // Data length exceeds the safe internal buffer size
-//         return false;
-//     }
-//
-//     // 1. Build the address bytes at the start of the temporary I2C buffer
-//     buildAddressBytes(addr, i2c_buffer);
-//
-//     // 2. Copy the data block after the address
-//     for (size_t i = 0; i < length; ++i) {
-//         i2c_buffer[addressWidth + i] = buffer[i];
-//     }
-//
-//     // 3. Write address and data in one go
-//     int written = i2c_write_blocking(i2cPort, eepromAddr, i2c_buffer, i2c_buffer_size, false);
-//
-//     if (written != (int)i2c_buffer_size) {
-//         return false; // Write failed
-//     }
-//
-//     // Wait for the EEPROM write cycle to complete (typically 5ms for 24LCxx series)
-//     // This is the simplest way to ensure the write operation finishes.
-//     sleep_ms(5);
-//
-//     return true; // Write succeeded
-// }
-
-bool Eeprom::writeBlock(int addr, const uint8_t *buffer, size_t length) {
-    // Limit writes to one page at a time (EEPROM page size, e.g., 32 bytes)
-    const size_t pageSize = 32;
+bool Eeprom::writeBlock(int addrP, uint8_t const *pBufferP, size_t lengthP)
+{
+    size_t const pageSizeM = 32;
     size_t bytesWritten = 0;
+    bool result = true;
 
-    while (bytesWritten < length) {
-        size_t chunk = std::min(pageSize - (addr % pageSize), length - bytesWritten);
+    while (bytesWritten < lengthP)
+    {
+        size_t chunk = std::min(
+            pageSizeM - (static_cast<size_t>(addrP) % pageSizeM),
+            lengthP - bytesWritten);
 
-        uint8_t i2c_buffer[addressWidth + chunk];
-        buildAddressBytes(addr, i2c_buffer);
+        uint8_t i2c_buffer[addressWidthM + chunk];
+        buildAddressBytes(addrP, i2c_buffer);
 
-        for (size_t i = 0; i < chunk; i++) {
-            i2c_buffer[addressWidth + i] = buffer[bytesWritten + i];
+        for (size_t i = 0; i < chunk; ++i)
+        {
+            i2c_buffer[addressWidthM + i] = pBufferP[bytesWritten + i];
         }
 
-        int written = i2c_write_blocking(i2cPort, eepromAddr, i2c_buffer, addressWidth + chunk, false);
-        if (written != (int)(addressWidth + chunk)) return false;
+        int written = i2c_write_blocking(
+            i2cPortM,
+            eepromAddrM,
+            i2c_buffer,
+            addressWidthM + chunk,
+            false);
 
-        sleep_ms(5); // Wait for write cycle
+        if (written != static_cast<int>(addressWidthM + chunk))
+        {
+            result = false;
+            break;
+        }
 
-        addr += chunk;
+        sleep_ms(5);
+        addrP += static_cast<int>(chunk);
         bytesWritten += chunk;
     }
 
-    return true;
+    return result;
 }

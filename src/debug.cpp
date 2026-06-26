@@ -7,49 +7,54 @@
 #include <memory>
 #include <utility>
 
-void debugTask(void *pvParameters);
-
-Debug::Debug() : m_queue{xQueueCreate(20, sizeof(DebugEvent))} {
+namespace
+{
+    void debugTask(void *pvParametersP)
+    {
+        auto const pTask = static_cast<DebugTask *>(pvParametersP);
+        pTask->run();
+    }
 }
 
-void Debug::print(const char *txt, ...) const {
-  DebugEvent e{};
-  e.timestamp = xTaskGetTickCount();
-
-  va_list args;
-  va_start(args, txt);
-  vsnprintf(e.msg, sizeof(e.msg), txt, args);
-  va_end(args);
-
-  // Non-blocking send, events can be lost
-  xQueueSend(m_queue, &e, 0);
+Debug::Debug() : m_queue{xQueueCreate(20, sizeof(DebugEvent))}
+{
 }
 
-DebugEvent Debug::getEvent() const {
-  DebugEvent e{};
-  xQueueReceive(m_queue, &e, portMAX_DELAY);
-  return e;
+void Debug::print(char const *pTxtP, ...) const
+{
+    DebugEvent e{};
+    e.timestamp = xTaskGetTickCount();
+
+    va_list args;
+    va_start(args, pTxtP);
+    vsnprintf(e.msg, sizeof(e.msg), pTxtP, args);
+    va_end(args);
+
+    // Non-blocking send, events can be lost
+    xQueueSend(m_queue, &e, 0);
 }
 
-
-DebugTask::DebugTask(std::shared_ptr<Debug> debug) : m_debug{
-  std::move(debug)
-} {
-  constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
-
-  xTaskCreate(debugTask, "DebugTask", 1024, this, TASK_LOW_PRIORITY,
-              nullptr);
+DebugEvent Debug::getEvent() const
+{
+    DebugEvent e{};
+    xQueueReceive(m_queue, &e, portMAX_DELAY);
+    return e;
 }
 
-[[noreturn]] void DebugTask::run() const {
-  while (true) {
-    auto [msg, timestamp] = m_debug->getEvent();
-    printf("[%lu] %s", static_cast<unsigned long>(timestamp), msg);
-  }
+DebugTask::DebugTask(std::shared_ptr<Debug> pDebugP) : m_debug{
+    std::move(pDebugP)
+}
+{
+    constexpr int TASK_LOW_PRIORITY = 1 + tskIDLE_PRIORITY;
+
+    xTaskCreate(debugTask, "DebugTask", 1024, this, TASK_LOW_PRIORITY,
+                nullptr);
 }
 
-
-void debugTask(void *pvParameters) {
-  const auto task = static_cast<DebugTask *>(pvParameters);
-  task->run();
+[[noreturn]] void DebugTask::run() const
+{
+    while (true) {
+        auto [msg, timestamp] = m_debug->getEvent();
+        printf("[%lu] %s", static_cast<unsigned long>(timestamp), msg);
+    }
 }

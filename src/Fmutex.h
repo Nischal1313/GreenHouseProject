@@ -1,24 +1,23 @@
 /*
-* Fmutex.h
+ * Fmutex.h
  *
  *  Created on: 15.8.2017
  *      Author: krl
  */
 
-#ifndef FMUTEX_H_
-#define FMUTEX_H_
+#pragma once
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 
-class Fmutex {
+class Fmutex
+{
 public:
-  Fmutex();
-  ~Fmutex();
-  void lock();
-  void unlock();
-private:
-  SemaphoreHandle_t mutex;
-};
+    Fmutex();
+    ~Fmutex();
+    void lock();
+    void unlock();
 
-#endif /* FMUTEX_H_ */
+private:
+    SemaphoreHandle_t mutexM;
+};

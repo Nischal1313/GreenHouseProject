@@ -1,4 +1,5 @@
-extern "C" {
+extern "C"
+{
 #include "FreeRTOS.h"
 #include "task.h"
 }
@@ -9,174 +10,192 @@ extern "C" {
 #include <cstring>
 #include "pico/stdio.h"
 
-
-DisplayManager::DisplayManager(std::shared_ptr<Debug> debug,
-                               std::shared_ptr<ssd1306os> oled,
-                               const std::shared_ptr<RotaryEncoder> &
-                               encoderPtr)
-  : oLed(std::move(oled)),
-    debug(std::move(debug)),
-    encoder(encoderPtr),
-    params(nullptr),
-    menuState(MenuState::MAIN),
-    prevSSIDSelected(true),
-    prevCharsetChanged(false) {
+DisplayManager::DisplayManager(std::shared_ptr<Debug> pDebugP,
+                               std::shared_ptr<ssd1306os> pOledP,
+                               std::shared_ptr<RotaryEncoder> const &pEncoderPtrP)
+    : pOLedM{std::move(pOledP)},
+      pDebugM{std::move(pDebugP)},
+      pEncoderM{pEncoderPtrP},
+      pParamsM{nullptr},
+      menuStateM{MenuState::MAIN},
+      prevSsidSelectedM{true},
+      prevCharsetChangedM{false}
+{
 }
 
-void DisplayManager::setParams(DisplayParams *displayParams) {
-  if (!displayParams) {
-    printf("[DisplayManager] ERROR: displayParams is NULL!\n");
-    return;
-  }
-  params = displayParams;
+void DisplayManager::setParams(DisplayParams *pDisplayParamsP)
+{
+    if (!pDisplayParamsP)
+    {
+        printf("[DisplayManager] ERROR: displayParams is NULL!\n");
+    }
+    else
+    {
+        pParamsM = pDisplayParamsP;
+    }
 }
 
-MenuState DisplayManager::getCurrentMenuState() const {
-  return menuState;
+MenuState DisplayManager::getCurrentMenuState() const
+{
+    return menuStateM;
 }
 
-[[noreturn]] void DisplayManager::displayTask() {
-  while (true) {
-    if (!params || !params->inputManager) {
-      printf("[DisplayManager] Waiting for valid params...\n");
-      vTaskDelay(pdMS_TO_TICKS(500));
-      continue;
+[[noreturn]] void DisplayManager::displayTask()
+{
+    while (true)
+    {
+        if (!pParamsM || !pParamsM->pInputManagerM)
+        {
+            printf("[DisplayManager] Waiting for valid params...\n");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
+        bool const inMainMenu{pParamsM->pInputManagerM->isMainMenu()};
+
+        if (inMainMenu)
+        {
+            drawMainMenu();
+        }
+        else
+        {
+            handleWifiMenuButtons();
+            drawWifiMenu();
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
+
+void DisplayManager::drawMainMenu() const
+{
+    pOLedM->fill(0);
+
+    char buf[128]{};
+    auto const [temperatureM, humidityM, co2M, fanSpeedM, valveOpenM, targetCo2M] =
+        pParamsM->pSensorHandlerM->getReadings();
+
+    snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2M);
+    pOLedM->text(buf, 2, 5);
+
+    snprintf(buf, sizeof(buf), "Set: %d ppm", targetCo2M);
+    pOLedM->text(buf, 2, 15);
+
+    snprintf(buf, sizeof(buf), "Temp: %.1fC", temperatureM);
+    pOLedM->text(buf, 2, 25);
+
+    snprintf(buf, sizeof(buf), "Hum: %.1f%%", humidityM);
+    pOLedM->text(buf, 2, 35);
+
+    snprintf(buf, sizeof(buf), "Fan: %.0f%%", fanSpeedM);
+    pOLedM->text(buf, 2, 45);
+
+    snprintf(buf, sizeof(buf), "Valve: %s",
+             valveOpenM ? "OPEN" : "CLOSED");
+    pOLedM->text(buf, 2, 55);
+
+    pOLedM->show();
+}
+
+void DisplayManager::drawWifiMenu()
+{
+    pOLedM->fill(0);
+
+    auto *pCred{pParamsM->pCredentialsM};
+    char buf[128]{};
+
+    snprintf(buf, sizeof(buf), "|%s|", pCred->getCurrentFieldName());
+    pOLedM->text(buf, 50, 2);
+
+    snprintf(buf, sizeof(buf), "%s", pCred->getCurrentBuffer());
+    pOLedM->text(buf, 0, 12);
+
+    auto const mode{pCred->getCharsetMode()};
+    char const *charsetName{
+        (mode == CharsetMode::LOWERCASE)
+            ? "a b z"
+            : (mode == CharsetMode::UPPERCASE)
+                ? "A B Z"
+                : (mode == CharsetMode::NUMBERS)
+                    ? "1 %  _ <"
+                    : "undef"};
+    snprintf(buf, sizeof(buf), "Chars: %s", charsetName);
+    pOLedM->text(buf, 2, 22);
+
+    char curChar{pCred->getCurrentChar()};
+    snprintf(buf, sizeof(buf), "-> %c <-", curChar);
+    pOLedM->text(buf, 55, 32);
+
+    pOLedM->show();
+}
+
+void DisplayManager::handleWifiMenuButtons()
+{
+    bool const currentSsidSelected{pParamsM->pInputManagerM->isSSIDSelected()};
+    if (currentSsidSelected != prevSsidSelectedM)
+    {
+        prevSsidSelectedM = currentSsidSelected;
+        pParamsM->pCredentialsM->nextField();
     }
 
-    bool inMainMenu = params->inputManager->isMainMenu();
+    auto const inputCharset{pParamsM->pInputManagerM->getCharsetMode()};
+    auto const credCharset{pParamsM->pCredentialsM->getCharsetMode()};
 
-    if (inMainMenu) {
-      drawMainMenu();
-    } else {
-      handleWifiMenuButtons();
-      drawWifiMenu();
+    CharsetMode targetCharset;
+    switch (inputCharset)
+    {
+        case InputCharsetMode::CAPITAL:
+            targetCharset = CharsetMode::UPPERCASE;
+            break;
+        case InputCharsetMode::NORMAL:
+            targetCharset = CharsetMode::LOWERCASE;
+            break;
+        case InputCharsetMode::NUMERIC:
+            targetCharset = CharsetMode::NUMBERS;
+            break;
+        default:
+            targetCharset = CharsetMode::LOWERCASE;
+            break;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(200));
-  }
-}
-
-void DisplayManager::drawMainMenu() const {
-  oLed->fill(0);
-
-  char buf[128];
-  const auto [temperature, humidity, co2, fanSpeed, valveOpen,
-        targetCo2] =
-      params->sensorHandler->getReadings();
-
-  snprintf(buf, sizeof(buf), "CO2: %.0f ppm", co2);
-  oLed->text(buf, 2, 5);
-
-  snprintf(buf, sizeof(buf), "Set: %d ppm", targetCo2);
-  oLed->text(buf, 2, 15);
-
-  snprintf(buf, sizeof(buf), "Temp: %.1fC", temperature);
-  oLed->text(buf, 2, 25);
-
-  snprintf(buf, sizeof(buf), "Hum: %.1f%%", humidity);
-  oLed->text(buf, 2, 35);
-
-  snprintf(buf, sizeof(buf), "Fan: %.0f%%", fanSpeed);
-  oLed->text(buf, 2, 45);
-
-  snprintf(buf, sizeof(buf), "Valve: %s",
-           valveOpen ? "OPEN" : "CLOSED");
-  oLed->text(buf, 2, 55);
-
-  oLed->show();
-}
-
-void DisplayManager::drawWifiMenu() {
-  oLed->fill(0);
-
-  auto *cred = params->credentials;
-  char buf[128];
-
-  snprintf(buf, sizeof(buf), "|%s|", cred->getCurrentFieldName());
-  oLed->text(buf, 50, 2);
-
-  snprintf(buf, sizeof(buf), "%s", cred->getCurrentBuffer());
-  oLed->text(buf, 0, 12);
-
-  const auto mode = cred->getCharsetMode();
-  const char *charsetName =
-      (mode == CharsetMode::LOWERCASE)
-        ? "a b z"
-        : (mode == CharsetMode::UPPERCASE)
-            ? "A B Z"
-            : (mode == CharsetMode::NUMBERS)
-                ? "1 %  _ <"
-                : "undef";
-  snprintf(buf, sizeof(buf), "Chars: %s", charsetName);
-  oLed->text(buf, 2, 22);
-
-  char curChar = cred->getCurrentChar();
-  snprintf(buf, sizeof(buf), "-> %c <-", curChar);
-  oLed->text(buf, 55, 32);
-
-  oLed->show();
-}
-
-void DisplayManager::handleWifiMenuButtons() {
-  const bool currentSSIDSelected = params->inputManager->
-      isSSIDSelected();
-  if (currentSSIDSelected != prevSSIDSelected) {
-    prevSSIDSelected = currentSSIDSelected;
-    params->credentials->nextField();
-  }
-
-  const auto inputCharset = params->inputManager->getCharsetMode();
-  const auto credCharset = params->credentials->getCharsetMode();
-
-  CharsetMode targetCharset;
-  switch (inputCharset) {
-    case InputCharsetMode::CAPITAL:
-      targetCharset = CharsetMode::UPPERCASE;
-      break;
-    case InputCharsetMode::NORMAL:
-      targetCharset = CharsetMode::LOWERCASE;
-      break;
-    case InputCharsetMode::NUMERIC:
-      targetCharset = CharsetMode::NUMBERS;
-      break;
-    default:
-      targetCharset = CharsetMode::LOWERCASE;
-      break;
-  }
-
-
-  if (credCharset != targetCharset) {
-    while (params->credentials->getCharsetMode() != targetCharset) {
-      params->credentials->nextCharset();
+    if (credCharset != targetCharset)
+    {
+        while (pParamsM->pCredentialsM->getCharsetMode() != targetCharset)
+        {
+            pParamsM->pCredentialsM->nextCharset();
+        }
     }
-  }
 
-  if (encoder->rotatedCW()) {
-    params->credentials->rotateChar(1);
-  }
+    if (pEncoderM->rotatedCW())
+    {
+        pParamsM->pCredentialsM->rotateChar(1);
+    }
 
-  if (encoder->rotatedCCW()) {
-    params->credentials->rotateChar(-1);
-  }
+    if (pEncoderM->rotatedCCW())
+    {
+        pParamsM->pCredentialsM->rotateChar(-1);
+    }
 
+    if (pEncoderM->buttonPressed())
+    {
+        pParamsM->pCredentialsM->confirmChar();
+    }
 
-  if (encoder->buttonPressed()) {
-    char selectedChar = params->credentials->getCurrentChar();
-    params->credentials->confirmChar();
-  }
-
-  if (encoder->buttonHeld()) {
-    params->credentials->clearCurrentField();
-  }
+    if (pEncoderM->buttonHeld())
+    {
+        pParamsM->pCredentialsM->clearCurrentField();
+    }
 }
 
-void DisplayManager::changeMenu() {
-  menuState = (menuState == MenuState::MAIN)
-                ? MenuState::WIFI
-                : MenuState::MAIN;
+void DisplayManager::changeMenu()
+{
+    menuStateM = (menuStateM == MenuState::MAIN)
+                    ? MenuState::WIFI
+                    : MenuState::MAIN;
 }
 
-void DisplayManager::taskEntry(void *pvParameters) {
-  auto *self = static_cast<DisplayManager *>(pvParameters);
-  self->displayTask();
+void DisplayManager::taskEntry(void *pvParametersP)
+{
+    auto *self{static_cast<DisplayManager *>(pvParametersP)};
+    self->displayTask();
 }

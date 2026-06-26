@@ -1,5 +1,4 @@
-#ifndef WATCHDOG_H
-#define WATCHDOG_H
+#pragma once
 
 #include "FreeRTOS.h"
 #include "event_groups.h"
@@ -14,47 +13,47 @@
  * the timeout, the watchdog prints "OK". Otherwise, it reports
  * missing tasks and suspends itself.
  */
-class Watchdog {
+class Watchdog
+{
 public:
-  /**
-   * @brief Construct a Watchdog instance.
-   * @param group The event group handle (must be created beforehand).
-   * @param timeoutTicks Timeout in FreeRTOS ticks before declaring failure.
-   */
-  Watchdog(EventGroupHandle_t group, TickType_t timeoutTicks);
+    /**
+     * @brief Construct a Watchdog instance.
+     * @param groupP The event group handle (must be created beforehand).
+     * @param timeoutTicksP Timeout in FreeRTOS ticks before declaring failure.
+     */
+    Watchdog(EventGroupHandle_t groupP, TickType_t timeoutTicksP);
 
-  /**
-   * @brief Start the watchdog task.
-   */
-  void start();
+    /**
+     * @brief Start the watchdog task.
+     */
+    void start();
 
-  /**
-   * @brief Get the event bit for a given task index (1–6).
-   * @param taskIndex Task number (1–6).
-   * @return Event bit mask for that task.
-   */
-  static EventBits_t taskBit(int taskIndex);
+    /**
+     * @brief Get the event bit for a given task index (1–6).
+     * @param taskIndexP Task number (1–6).
+     * @return Event bit mask for that task.
+     */
+    static EventBits_t taskBit(int taskIndexP);
 
 private:
-  EventGroupHandle_t eventGroup;
-  TickType_t timeoutTicks;
-  static constexpr int MAX_TASKS = 6;
+    EventGroupHandle_t eventGroupM;
+    TickType_t timeoutTicksM;
+    static int constexpr MAX_TASKS{6};
 
-  // Bitmask of all monitored tasks
-  static constexpr EventBits_t ALL_BITS =
-      (1 << 0) | (1 << 1) | (1 << 2) |
-      (1 << 3) | (1 << 4) | (1 << 5);
+    // Bitmask of all monitored tasks
+    static EventBits_t constexpr ALL_BITS{
+        (1 << 0) | (1 << 1) | (1 << 2) |
+        (1 << 3) | (1 << 4) | (1 << 5)
+    };
 
-  /**
-   * @brief The watchdog task loop.
-   * @param param Pointer to Watchdog instance.
-   */
-  static void taskLoop(void *param);
+    /**
+     * @brief The watchdog task loop.
+     * @param pParamP Pointer to Watchdog instance.
+     */
+    static void taskLoop(void *pParamP);
 
-  /**
-   * @brief Helper to print debug output.
-   */
-  static void debug(const char *msg);
+    /**
+     * @brief Helper to print debug output.
+     */
+    static void debug(char const *pMsgP);
 };
-
-#endif // WATCHDOG_H

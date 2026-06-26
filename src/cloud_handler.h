@@ -10,66 +10,65 @@
 #include "mutexGuard.h"
 
 
-// #define TLS_CLIENT_SERVER "api.thingspeak.com"
-
-class CloudClass {
+class CloudClass
+{
 public:
-  CloudClass(const std::shared_ptr<SensorHandler> &sensorHandler,
-             SemaphoreHandle_t eepromMutex, Eeprom &eeprom);
+    CloudClass(std::shared_ptr<SensorHandler> const &pSensorHandlerP,
+               SemaphoreHandle_t const eepromMutexP,
+               Eeprom &rEepromP);
 
-  void storeSetpointToEEPROM(int setpoint) const;
+    void storeSetpointToEEPROM(int setpointP) const;
 
-  void connect();
+    void connect();
 
-  void setCredentials(const char *ssid, const char *password);
+    void setCredentials(char const *pSsidP, char const *pPasswordP);
 
-  void loadCredentialsFromEEPROM();
+    void loadCredentialsFromEEPROM();
 
-  bool sendData(int co2, int temperature, int humidity,
-                int fanSpeed, int co2Setpoint);
+    bool sendData(int co2P, int temperatureP, int humidityP,
+                  int fanSpeedP, int co2SetpointP);
 
-  void checkTalkBackQueue() const;
+    void checkTalkBackQueue() const;
 
-  static void dataSendTaskEntry(void *pvParameters);
-  static void talkbackPollTaskEntry(void *pvParameters);
+    static void dataSendTaskEntry(void *pvParametersP);
+    static void talkbackPollTaskEntry(void *pvParametersP);
 
-  [[noreturn]] void dataSendTask();
-  [[noreturn]] void talkbackPollTask();
+    [[noreturn]] void dataSendTask();
+    [[noreturn]] void talkbackPollTask();
 
-  bool transmit = false;
-  bool network_connected = false;
+    bool transmitM{false};
+    bool networkConnectedM{false};
 
-  // Mutex to protect TLS operations (shared between both tasks)
-  static SemaphoreHandle_t tlsMutex;
+    // Mutex to protect TLS operations (shared between both tasks)
+    static SemaphoreHandle_t tlsMutexS;
 
 private:
-  static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0500;
-  static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0600;
-  static constexpr uint16_t FIELD_SIZE = 32;
-  static constexpr uint DATA_SEND_DELAY = 60000;  // Send data every 60 seconds
-  static constexpr uint TALKBACK_POLL_DELAY = 5000;  // Poll TalkBack every 5 seconds
-  static constexpr int MIN_CO2_SETPOINT = 200;
-  static constexpr int MAX_CO2_SETPOINT = 15000;
-  static constexpr uint16_t EEPROM_CO2_CLOUD_ADDR = 0x0200;
-  static constexpr uint8_t TLS_CLIENT_TIMEOUT_SECS = 15;
-  static constexpr const char *TLS_CLIENT_SERVER = &*
-      "api.thingspeak.com";
+    static constexpr uint16_t EEPROM_WIFI_NAME_ADDR{0x0500};
+    static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR{0x0600};
+    static constexpr uint16_t FIELD_SIZE{32};
+    static constexpr uint DATA_SEND_DELAY{60000};
+    static constexpr uint TALKBACK_POLL_DELAY{5000};
+    static constexpr int MIN_CO2_SETPOINT{200};
+    static constexpr int MAX_CO2_SETPOINT{15000};
+    static constexpr uint16_t EEPROM_CO2_CLOUD_ADDR{0x0200};
+    static constexpr uint8_t TLS_CLIENT_TIMEOUT_SECS{15};
+    static constexpr char const *TLS_CLIENT_SERVER{"api.thingspeak.com"};
 
-  char ssid[32]{};
-  char password[64]{};
-  std::shared_ptr<SensorHandler> resources;
-  Eeprom *eeprom;
-  SemaphoreHandle_t eepromMutex;
+    char ssidM[32]{};
+    char passwordM[64]{};
+    std::shared_ptr<SensorHandler> pResourcesM;
+    Eeprom *pEepromM;
+    SemaphoreHandle_t eepromMutexM;
 
-  static int parseTalkBackCommand();
+    static int parseTalkBackCommand();
 };
 
 
 extern "C" {
-bool run_tls_client_test(const uint8_t *cert, size_t cert_len,
-                         const char *server, const char *request,
-                         int timeout);
-
-extern char tls_client_response[2048*2];
-extern const char root_ca[];
+bool run_tls_client_test(uint8_t const *pCertP, size_t certLenP,
+                         char const *pServerP, char const *pRequestP,
+                         int timeoutP);
 }
+
+extern char tlsClientResponseG[2048*2];
+extern char const rootCaG[];

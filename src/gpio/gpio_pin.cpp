@@ -1,103 +1,162 @@
 #include "gpio_pin.h"
 #include <cstdio>
 
-GPIOPin::GPIOPin(const uint pin, const GPIOMode mode,const GPIOPull pull,const bool invert,const uint32_t debounce_ms)
-    : pin_number(pin), mode(mode), pull(pull), is_inverted(invert),
-      lastReading(false), stableState(false),
-      pressEvent(false), holdEvent(false),
-      debounce_ms(debounce_ms), hold_ms(1000) // default hold = 1s
+GPIOPin::GPIOPin(
+    uint pinP,
+    GPIOMode modeP,
+    GPIOPull pullP,
+    bool invertP,
+    uint32_t debounceMsP) :
+    pinNumberM{pinP},
+    modeM{modeP},
+    pullM{pullP},
+    isInvertedM{invertP},
+    lastReadingM{false},
+    stableStateM{false},
+    pressEventM{false},
+    holdEventM{false},
+    debounceMsM{debounceMsP},
+    holdMsM{1000}
 {
-    gpio_init(pin);
-    gpio_set_dir(pin, mode == GPIOMode::OUTPUT ? GPIO_OUT : GPIO_IN);
+    gpio_init(pinP);
+    gpio_set_dir(pinP, modeP == GPIOMode::OUTPUT ? GPIO_OUT : GPIO_IN);
 
-    // Configure pull resistors
-    if (pull == GPIOPull::PULLUP)
-        gpio_pull_up(pin);
-    else if (pull == GPIOPull::PULLDOWN)
-        gpio_pull_down(pin);
+    if (pullP == GPIOPull::PULLUP)
+    {
+        gpio_pull_up(pinP);
+    }
+    else if (pullP == GPIOPull::PULLDOWN)
+    {
+        gpio_pull_down(pinP);
+    }
 
-    // Optional inversion (hardware-level inversion)
-    if (invert) {
-        if (mode == GPIOMode::INPUT)
-            gpio_set_inover(pin, GPIO_OVERRIDE_INVERT);
+    if (invertP)
+    {
+        if (modeP == GPIOMode::INPUT)
+        {
+            gpio_set_inover(pinP, GPIO_OVERRIDE_INVERT);
+        }
         else
-            gpio_set_outover(pin, GPIO_OVERRIDE_INVERT);
-    }
-
-    lastChangeTime = get_absolute_time();
-    pressStartTime = get_absolute_time();
-}
-
-// --- READ/WRITE ---
-
-bool GPIOPin::read() const {
-    if (mode != GPIOMode::INPUT) {
-        printf("[GPIO WARNING] Attempted to read from OUTPUT pin %d\n", pin_number);
-        return false;
-    }
-    bool val = gpio_get(pin_number);
-    return is_inverted ? !val : val;
-}
-
-void GPIOPin::write(const bool value) const {
-    if (mode != GPIOMode::OUTPUT) {
-        printf("[GPIO WARNING] Attempted to write to INPUT pin %d\n", pin_number);
-        return;
-    }
-    gpio_put(pin_number, is_inverted ? !value : value);
-}
-
-int GPIOPin::getPin() const {
-    return pin_number;
-}
-
-// --- BUTTON LOGIC ---
-
-void GPIOPin::update() {
-    if (mode != GPIOMode::INPUT) return; // ignore for output pins
-
-    const bool reading = !gpio_get(pin_number); // active low button
-
-    const absolute_time_t now = get_absolute_time();
-
-    // Debounce filtering
-    if (reading != lastReading)
-        lastChangeTime = now;
-
-    if (absolute_time_diff_us(lastChangeTime, now) > debounce_ms * 1000) {
-        if (reading != stableState) {
-            stableState = reading;
-
-            if (stableState) {
-                // Press started
-                pressEvent = true;
-                pressStartTime = now;
-                holdEvent = false;
-            } else {
-                // Released
-                holdEvent = false;
-            }
+        {
+            gpio_set_outover(pinP, GPIO_OVERRIDE_INVERT);
         }
     }
 
-    // Hold detection
-    if (stableState && !holdEvent &&
-        absolute_time_diff_us(pressStartTime, now) > hold_ms * 1000) {
-        holdEvent = true;
+    lastChangeTimeM = get_absolute_time();
+    pressStartTimeM = get_absolute_time();
+}
+
+bool GPIOPin::read() const
+{
+    bool result;
+
+    if (modeM != GPIOMode::INPUT)
+    {
+        printf("[GPIO WARNING] Attempted to read from OUTPUT pin %d\n", pinNumberM);
+        result = false;
+    }
+    else
+    {
+        bool val = gpio_get(pinNumberM);
+        result = isInvertedM ? !val : val;
     }
 
-    lastReading = reading;
+    return result;
 }
 
-bool GPIOPin::pressed() {
-    if (pressEvent) { pressEvent = false; return true; }
-    return false;
+void GPIOPin::write(bool valueP) const
+{
+    if (modeM != GPIOMode::OUTPUT)
+    {
+        printf("[GPIO WARNING] Attempted to write to INPUT pin %d\n", pinNumberM);
+    }
+    else
+    {
+        gpio_put(pinNumberM, isInvertedM ? !valueP : valueP);
+    }
 }
 
-bool GPIOPin::held() {
-    if (holdEvent) { holdEvent = false; return true; }
-    return false;
+int GPIOPin::getPin() const
+{
+    return pinNumberM;
 }
 
-void GPIOPin::setHoldTime(const uint32_t ms) { hold_ms = ms; }
-void GPIOPin::setDebounceTime(const uint32_t ms) { debounce_ms = ms; }
+void GPIOPin::update()
+{
+    if (modeM == GPIOMode::INPUT)
+    {
+        bool reading = !gpio_get(pinNumberM);
+        absolute_time_t now = get_absolute_time();
+
+        if (reading != lastReadingM)
+        {
+            lastChangeTimeM = now;
+        }
+
+        if (absolute_time_diff_us(lastChangeTimeM, now)
+            > static_cast<int64_t>(debounceMsM) * 1000)
+        {
+            if (reading != stableStateM)
+            {
+                stableStateM = reading;
+
+                if (stableStateM)
+                {
+                    pressEventM = true;
+                    pressStartTimeM = now;
+                    holdEventM = false;
+                }
+                else
+                {
+                    holdEventM = false;
+                }
+            }
+        }
+
+        if (stableStateM
+            && !holdEventM
+            && absolute_time_diff_us(pressStartTimeM, now)
+                > static_cast<int64_t>(holdMsM) * 1000)
+        {
+            holdEventM = true;
+        }
+
+        lastReadingM = reading;
+    }
+}
+
+bool GPIOPin::pressed()
+{
+    bool result = false;
+
+    if (pressEventM)
+    {
+        pressEventM = false;
+        result = true;
+    }
+
+    return result;
+}
+
+bool GPIOPin::held()
+{
+    bool result = false;
+
+    if (holdEventM)
+    {
+        holdEventM = false;
+        result = true;
+    }
+
+    return result;
+}
+
+void GPIOPin::setHoldTime(uint32_t msP)
+{
+    holdMsM = msP;
+}
+
+void GPIOPin::setDebounceTime(uint32_t msP)
+{
+    debounceMsM = msP;
+}

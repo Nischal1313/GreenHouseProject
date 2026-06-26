@@ -5,163 +5,215 @@
 #include <algorithm>
 #include "pico/time.h"
 
-bool CredentialValidator::isValidString(const uint8_t *data,
-                                        const size_t len,
-                                        const size_t fieldSize) {
-  if (data[0] == 0xFF || data[0] == 0x00) {
-    bool allSame = true;
-    for (size_t i = 1; i < len && i < fieldSize; i++) {
-      if (data[i] != data[0]) {
-        allSame = false;
-        break;
-      }
+bool CredentialValidator::isValidString(uint8_t const *pDataP,
+                                        size_t const lenP,
+                                        size_t const fieldSizeP)
+{
+    bool result{true};
+
+    if (pDataP[0] == 0xFF || pDataP[0] == 0x00)
+    {
+        bool allSame{true};
+        for (size_t i{1}; i < lenP && i < fieldSizeP; i++)
+        {
+            if (pDataP[i] != pDataP[0])
+            {
+                allSame = false;
+                break;
+            }
+        }
+        result = !allSame;
     }
-    return !allSame;
-  }
-
-  for (size_t i = 0; i < len && i < fieldSize; i++) {
-    if (data[i] == 0) break;
-    if (data[i] < 32 || data[i] > 126) return false;
-  }
-  return true;
-}
-
-SetCredentials::SetCredentials(Eeprom &eeprom,
-                               const SemaphoreHandle_t eepromMutex)
-  : eeprom(eeprom),
-    eepromMutex(eepromMutex),
-    currentField(CredentialField::WIFI_NAME),
-    charsetMode(CharsetMode::LOWERCASE),
-    currentCharIndex(0) {
-  charsets[0] = "abcdefghijklmnopqrstuvwxyz";
-  charsets[1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  charsets[2] = "0123456789,-/?+:.<>|#!%()[]{}";
-  buffers[0].clear();
-  buffers[1].clear();
-  loadFromEEPROM();
-}
-
-void SetCredentials::loadFromEEPROM() {
-  uint8_t tmp[FIELD_SIZE];
-  const MutexGuard lock(eepromMutex);
-
-  if (!lock.owns_lock()) {
-    return;
-  }
-
-  auto loadField = [&](const CredentialField field,
-                       const uint16_t address, const int index) {
-    printf("[EEPROM] Loading field %s from address 0x%04X\n",
-           field == CredentialField::WIFI_NAME ? "SSID" : "Password",
-           address);
-
-    if (!eeprom.readBlock(address, tmp, FIELD_SIZE)) {
-      printf("[EEPROM] ✗ Failed to read field at 0x%04X\n", address);
-      buffers[index].clear();
-      return;
+    else
+    {
+        for (size_t i{0}; i < lenP && i < fieldSizeP; i++)
+        {
+            if (pDataP[i] == 0)
+            {
+                break;
+            }
+            if (pDataP[i] < 32 || pDataP[i] > 126)
+            {
+                result = false;
+                break;
+            }
+        }
     }
 
-    if (!CredentialValidator::isValidString(
-      tmp, FIELD_SIZE, FIELD_SIZE)) {
-      buffers[index].clear();
-      return;
+    return result;
+}
+
+SetCredentials::SetCredentials(Eeprom &rEepromP,
+                               SemaphoreHandle_t eepromMutexP)
+    : rEepromM{rEepromP},
+      eepromMutexM{eepromMutexP},
+      currentFieldM{CredentialField::WIFI_NAME},
+      charsetModeM{CharsetMode::LOWERCASE},
+      currentCharIndexM{0}
+{
+    charsetsM[0] = "abcdefghijklmnopqrstuvwxyz";
+    charsetsM[1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    charsetsM[2] = "0123456789,-/?+:.<>|#!%()[]{}";
+    buffersM[0].clear();
+    buffersM[1].clear();
+    loadFromEEPROM();
+}
+
+void SetCredentials::loadFromEEPROM()
+{
+    uint8_t tmp[FIELD_SIZE]{0};
+    MutexGuard lock{eepromMutexM};
+
+    if (lock.owns_lock())
+    {
+        auto loadField = [&](CredentialField const fieldP,
+                             uint16_t const addressP, int const indexP)
+        {
+            printf("[EEPROM] Loading field %s from address 0x%04X\n",
+                   fieldP == CredentialField::WIFI_NAME ? "SSID" : "Password",
+                   addressP);
+
+            if (!rEepromM.readBlock(addressP, tmp, FIELD_SIZE))
+            {
+                printf("[EEPROM] ✗ Failed to read field at 0x%04X\n", addressP);
+                buffersM[indexP].clear();
+                return;
+            }
+
+            if (!CredentialValidator::isValidString(
+                    tmp, FIELD_SIZE, FIELD_SIZE))
+            {
+                buffersM[indexP].clear();
+                return;
+            }
+
+            tmp[FIELD_SIZE - 1] = '\0';
+            buffersM[indexP] = std::string(reinterpret_cast<char *>(tmp));
+            if (buffersM[indexP].size() > MAX_CREDENTIAL_LENGTH)
+            {
+                buffersM[indexP] = buffersM[indexP].substr(0, MAX_CREDENTIAL_LENGTH);
+            }
+        };
+
+        loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
+        loadField(CredentialField::WIFI_PASSWD, EEPROM_WIFI_PASSWD_ADDR, 1);
     }
-
-    tmp[FIELD_SIZE - 1] = '\0';
-    buffers[index] = std::string(reinterpret_cast<char *>(tmp));
-    if (buffers[index].size() > MAX_CREDENTIAL_LENGTH)
-      buffers[index] = buffers[index].
-          substr(0, MAX_CREDENTIAL_LENGTH);
-  };
-
-  loadField(CredentialField::WIFI_NAME, EEPROM_WIFI_NAME_ADDR, 0);
-  loadField(CredentialField::WIFI_PASSWD, EEPROM_WIFI_PASSWD_ADDR, 1);
 }
 
-void SetCredentials::saveFieldToEEPROM(CredentialField field) const {
-  const uint16_t offset = (field == CredentialField::WIFI_NAME)
-                              ? EEPROM_WIFI_NAME_ADDR
-                              : EEPROM_WIFI_PASSWD_ADDR;
+void SetCredentials::saveFieldToEEPROM(CredentialField fieldP) const
+{
+    MutexGuard lock{eepromMutexM};
+    if (lock.owns_lock())
+    {
+        uint16_t const offset{(fieldP == CredentialField::WIFI_NAME)
+                                  ? EEPROM_WIFI_NAME_ADDR
+                                  : EEPROM_WIFI_PASSWD_ADDR};
 
-  const auto &buf = buffers[static_cast<int>(field)];
-  MutexGuard lock(eepromMutex);
-  if (!lock.owns_lock()) {
-    return;
-  }
+        auto const &buf{buffersM[static_cast<int>(fieldP)]};
+        uint8_t writeData[FIELD_SIZE]{0};
+        size_t const len{std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1))};
+        memcpy(writeData, buf.c_str(), len);
 
-  uint8_t writeData[FIELD_SIZE]{0};
-  const size_t len = std::min(buf.size(), static_cast<size_t>(FIELD_SIZE - 1));
-  memcpy(writeData, buf.c_str(), len);
-
-  if (!eeprom.writeBlock(offset, writeData, FIELD_SIZE)) {
-    printf("[SetCredentials] Failed to write field %d to EEPROM\n", static_cast<int>(field));
-  }
+        if (!rEepromM.writeBlock(offset, writeData, FIELD_SIZE))
+        {
+            printf("[SetCredentials] Failed to write field %d to EEPROM\n",
+                   static_cast<int>(fieldP));
+        }
+    }
 }
 
-
-char SetCredentials::getCurrentChar() const {
-  const auto &cs = charsets[static_cast<int>(charsetMode)];
-  if (cs.empty() || currentCharIndex >= cs.size()) return 'a';
-  return cs[currentCharIndex];
+char SetCredentials::getCurrentChar() const
+{
+    char result{'a'};
+    auto const &cs{charsetsM[static_cast<int>(charsetModeM)]};
+    if (!cs.empty() && currentCharIndexM < cs.size())
+    {
+        result = cs[currentCharIndexM];
+    }
+    return result;
 }
 
-std::string &SetCredentials::currentBuffer() {
-  return buffers[static_cast<int>(currentField)];
+std::string &SetCredentials::currentBuffer()
+{
+    return buffersM[static_cast<int>(currentFieldM)];
 }
 
-const std::string &SetCredentials::currentBuffer() const {
-  return buffers[static_cast<int>(currentField)];
+std::string const &SetCredentials::currentBuffer() const
+{
+    return buffersM[static_cast<int>(currentFieldM)];
 }
 
-CharsetMode SetCredentials::getCharsetMode() const {
-  return charsetMode;
+CharsetMode SetCredentials::getCharsetMode() const
+{
+    return charsetModeM;
 }
 
-void SetCredentials::rotateChar(const int direction) {
-  const auto &cs = charsets[static_cast<int>(charsetMode)];
-  if (cs.empty()) return;
-  const int len = static_cast<int>(cs.size());
-  currentCharIndex = (currentCharIndex + len + direction) % len;
+void SetCredentials::rotateChar(int const directionP)
+{
+    auto const &cs{charsetsM[static_cast<int>(charsetModeM)]};
+    if (!cs.empty())
+    {
+        int const len{static_cast<int>(cs.size())};
+        currentCharIndexM = (currentCharIndexM + len + directionP) % len;
+    }
 }
 
-void SetCredentials::confirmChar() {
-  auto &buf = currentBuffer();
-  const char c = getCurrentChar();
-  if (buf.size() >= MAX_CREDENTIAL_LENGTH) buf.clear();
-  buf.push_back(c);
-  saveFieldToEEPROM(currentField);
+void SetCredentials::confirmChar()
+{
+    auto &buf{currentBuffer()};
+    char const c{getCurrentChar()};
+    if (buf.size() >= MAX_CREDENTIAL_LENGTH)
+    {
+        buf.clear();
+    }
+    buf.push_back(c);
+    saveFieldToEEPROM(currentFieldM);
 }
 
-void SetCredentials::clearCurrentField() {
-  auto &buf = currentBuffer();
-  if (!buf.empty()) {
-    buf.clear();
-  }
+void SetCredentials::clearCurrentField()
+{
+    auto &buf{currentBuffer()};
+    if (!buf.empty())
+    {
+        buf.clear();
+    }
 }
 
-const char *SetCredentials::getCurrentBuffer() {
-  const auto &ref = buffers[static_cast<int>(currentField)];
-  return ref.empty() ? "EMPTY" : ref.c_str();
+char const *SetCredentials::getCurrentBuffer()
+{
+    auto const &ref{buffersM[static_cast<int>(currentFieldM)]};
+    return ref.empty() ? "EMPTY" : ref.c_str();
 }
 
-const char *SetCredentials::getCurrentFieldName() const {
-  switch (currentField) {
-    case CredentialField::WIFI_NAME: return "ssid";
-    case CredentialField::WIFI_PASSWD: return "passwd";
-    default: return "Unknown";
-  }
+char const *SetCredentials::getCurrentFieldName() const
+{
+    char const *result{"Unknown"};
+    switch (currentFieldM)
+    {
+        case CredentialField::WIFI_NAME:
+            result = "ssid";
+            break;
+        case CredentialField::WIFI_PASSWD:
+            result = "passwd";
+            break;
+        default:
+            break;
+    }
+    return result;
 }
 
-void SetCredentials::nextField() {
-  currentField = (currentField == CredentialField::WIFI_NAME)
-                   ? CredentialField::WIFI_PASSWD
-                   : CredentialField::WIFI_NAME;
-  currentCharIndex = 0;
+void SetCredentials::nextField()
+{
+    currentFieldM = (currentFieldM == CredentialField::WIFI_NAME)
+                        ? CredentialField::WIFI_PASSWD
+                        : CredentialField::WIFI_NAME;
+    currentCharIndexM = 0;
 }
 
-void SetCredentials::nextCharset() {
-  loadFromEEPROM();
-  charsetMode = static_cast<CharsetMode>(
-    (static_cast<int>(charsetMode) + 1) % 3);
-  currentCharIndex = 0;
+void SetCredentials::nextCharset()
+{
+    loadFromEEPROM();
+    charsetModeM = static_cast<CharsetMode>(
+        (static_cast<int>(charsetModeM) + 1) % 3);
+    currentCharIndexM = 0;
 }

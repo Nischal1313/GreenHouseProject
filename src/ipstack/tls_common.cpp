@@ -4,119 +4,135 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <string.h>
-#include <time.h>
+#include <cstring>
+#include <ctime>
+#include <cstdlib>
+#include <cstdio>
+#include <cassert>
 
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
-#include "lwip/pbuf.h"
-#include "lwip/altcp_tcp.h"
-#include "lwip/altcp_tls.h"
-#include "lwip/dns.h"
+#include <pico/stdlib.h>
+#include <pico/cyw43_arch.h>
+#include <lwip/pbuf.h>
+#include <lwip/altcp_tcp.h>
+#include <lwip/altcp_tls.h>
+#include <lwip/dns.h>
+#include <FreeRTOS.h>
+#include <task.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
+// Forward declaration so callbacks can append to it before the actual definition
+extern char tlsClientResponseG[2048*2];
 
-/* Forward declaration of response buffer so callbacks can append to it before
- * the actual definition later in this file. */
-extern char tls_client_response[2048*2];
+struct TlsClientState {
+    struct altcp_pcb *pcbM;
+    bool completeM;
+    int errorM;
+    char const *httpRequestM;
+    int timeoutM;
+};
 
-typedef struct TLS_CLIENT_T_ {
-    struct altcp_pcb *pcb;
-    bool complete;
-    int error;
-    const char *http_request;
-    int timeout;
-} TLS_CLIENT_T;
+namespace {
 
-static struct altcp_tls_config *tls_config = NULL;
+altcp_tls_config *tlsConfigS = nullptr;
 
-static err_t tls_client_close(void *arg) {
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
+err_t tlsClientClose(void *argP)
+{
+    auto *state = static_cast<TlsClientState *>(argP);
     err_t err = ERR_OK;
 
-    state->complete = true;
-    if (state->pcb != NULL) {
-        altcp_arg(state->pcb, NULL);
-        altcp_poll(state->pcb, NULL, 0);
-        altcp_recv(state->pcb, NULL);
-        altcp_err(state->pcb, NULL);
-        err = altcp_close(state->pcb);
-        if (err != ERR_OK) {
+    state->completeM = true;
+    if (state->pcbM != nullptr)
+    {
+        altcp_arg(state->pcbM, nullptr);
+        altcp_poll(state->pcbM, nullptr, 0);
+        altcp_recv(state->pcbM, nullptr);
+        altcp_err(state->pcbM, nullptr);
+        err = altcp_close(state->pcbM);
+        if (err != ERR_OK)
+        {
             printf("close failed %d, calling abort\n", err);
-            altcp_abort(state->pcb);
+            altcp_abort(state->pcbM);
             err = ERR_ABRT;
         }
-        state->pcb = NULL;
+        state->pcbM = nullptr;
     }
     return err;
 }
 
-static err_t tls_client_connected(void *arg, struct altcp_pcb *pcb, err_t err) {
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
-    if (err != ERR_OK) {
+err_t tlsClientConnected(void *argP, struct altcp_pcb *pcb, err_t err)
+{
+    auto *state = static_cast<TlsClientState *>(argP);
+    if (err != ERR_OK)
+    {
         printf("connect failed %d\n", err);
-        return tls_client_close(state);
+        return tlsClientClose(state);
     }
 
     printf("connected to server, sending request\n");
-    err = altcp_write(state->pcb, state->http_request, strlen(state->http_request), TCP_WRITE_FLAG_COPY);
-    if (err != ERR_OK) {
+    err = altcp_write(state->pcbM, state->httpRequestM, strlen(state->httpRequestM), TCP_WRITE_FLAG_COPY);
+    if (err != ERR_OK)
+    {
         printf("error writing data, err=%d", err);
-        return tls_client_close(state);
+        return tlsClientClose(state);
     }
 
     return ERR_OK;
 }
 
-static err_t tls_client_poll(void *arg, struct altcp_pcb *pcb) {
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
+err_t tlsClientPoll(void *argP, struct altcp_pcb *pcb)
+{
+    auto *state = static_cast<TlsClientState *>(argP);
     printf("timed out\n");
-    state->error = PICO_ERROR_TIMEOUT;
-    return tls_client_close(arg);
+    state->errorM = PICO_ERROR_TIMEOUT;
+    return tlsClientClose(argP);
 }
 
-static void tls_client_err(void *arg, err_t err) {
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
-    printf("tls_client_err %d\n", err);
-    tls_client_close(state);
-    state->error = PICO_ERROR_GENERIC;
+void tlsClientErr(void *argP, err_t err)
+{
+    auto *state = static_cast<TlsClientState *>(argP);
+    printf("tlsClientErr %d\n", err);
+    tlsClientClose(state);
+    state->errorM = PICO_ERROR_GENERIC;
 }
 
-static err_t tls_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, err_t err) {
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
-    if (!p) {
+err_t tlsClientRecv(void *argP, struct altcp_pcb *pcb, struct pbuf *p, err_t err)
+{
+    auto *state = static_cast<TlsClientState *>(argP);
+    if (!p)
+    {
         printf("connection closed\n");
-        return tls_client_close(state);
+        return tlsClientClose(state);
     }
 
-    if (p->tot_len > 0) {
-        /* For simplicity this examples creates a buffer on stack the size of the data pending here, 
+    if (p->tot_len > 0)
+    {
+        /* For simplicity this examples creates a buffer on stack the size of the data pending here,
            and copies all the data to it in one go.
            Do be aware that the amount of data can potentially be a bit large (TLS record size can be 16 KB),
            so you may want to use a smaller fixed size buffer and copy the data to it using a loop, if memory is a concern */
-        //char buf[p->tot_len + 1];
-        char *buf= (char *) malloc(p->tot_len + 1);
+        char *buf = static_cast<char *>(malloc(p->tot_len + 1));
 
         pbuf_copy_partial(p, buf, p->tot_len, 0);
         buf[p->tot_len] = 0;
 
         printf("***\nnew data received from server:\n***\n\n%s\n", buf);
 
-        /* Append the received chunk into the global tls_client_response buffer
-         * so higher-level code (cloud_handler.cpp) can parse the full HTTP
+/* Append the received chunk into the global tlsClientResponseG buffer
+          * so higher-level code (cloud_handler.cpp) can parse the full HTTP
          * response after run_tls_client_test() completes. Keep buffer bounds
-         * in mind and do not overflow tls_client_response. */
-        size_t cur_len = strlen(tls_client_response);
-        size_t space_left = sizeof(tls_client_response) - cur_len - 1; /* reserve NUL */
-        if (space_left > 0) {
+          * in mind and do not overflow tlsClientResponseG. */
+        size_t cur_len = strlen(tlsClientResponseG);
+        size_t space_left = sizeof(tlsClientResponseG) - cur_len - 1; /* reserve NUL */
+        if (space_left > 0)
+        {
             /* Copy at most space_left bytes */
             size_t to_copy = (p->tot_len <= space_left) ? p->tot_len : space_left;
-            memcpy(tls_client_response + cur_len, buf, to_copy);
-            tls_client_response[cur_len + to_copy] = '\0';
-        } else {
+            memcpy(tlsClientResponseG + cur_len, buf, to_copy);
+            tlsClientResponseG[cur_len + to_copy] = '\0';
+        }
+        else
+        {
             /* Buffer full; consider logging or truncating further data */
-            printf("tls_client_response buffer full, dropping %u bytes\n", p->tot_len);
+            printf("tlsClientResponseG buffer full, dropping %u bytes\n", p->tot_len);
         }
 
         free(buf);
@@ -128,57 +144,58 @@ static err_t tls_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, e
     return ERR_OK;
 }
 
-static void tls_client_connect_to_server_ip(const ip_addr_t *ipaddr, TLS_CLIENT_T *state)
+void tlsClientConnectToServerIp(ip_addr_t const *ipaddrP, TlsClientState *stateP)
 {
     err_t err;
     u16_t port = 443;
-    //u16_t port = 21883; // Joe's secure MQTT
-    //u16_t port = 8883; // secure MQTT
 
-    printf("connecting to server IP %s port %d\n", ipaddr_ntoa(ipaddr), port);
-    err = altcp_connect(state->pcb, ipaddr, port, tls_client_connected);
+    printf("connecting to server IP %s port %d\n", ipaddr_ntoa(ipaddrP), port);
+    err = altcp_connect(stateP->pcbM, ipaddrP, port, tlsClientConnected);
     if (err != ERR_OK)
     {
         fprintf(stderr, "error initiating connect, err=%d\n", err);
-        tls_client_close(state);
+        tlsClientClose(stateP);
     }
 }
 
-static void tls_client_dns_found(const char* hostname, const ip_addr_t *ipaddr, void *arg)
+void tlsClientDnsFound(const char *hostnameP, ip_addr_t const *ipaddrP, void *argP)
 {
-    if (ipaddr)
+    if (ipaddrP)
     {
         printf("DNS resolving complete\n");
-        tls_client_connect_to_server_ip(ipaddr, (TLS_CLIENT_T *) arg);
+        tlsClientConnectToServerIp(ipaddrP, static_cast<TlsClientState *>(argP));
     }
     else
     {
-        printf("error resolving hostname %s\n", hostname);
-        tls_client_close(arg);
+        printf("error resolving hostname %s\n", hostnameP);
+        tlsClientClose(argP);
     }
 }
 
-
-static bool tls_client_open(const char *hostname, void *arg) {
+bool tlsClientOpen(const char *hostnameP, void *argP)
+{
     err_t err;
     ip_addr_t server_ip;
-    TLS_CLIENT_T *state = (TLS_CLIENT_T*)arg;
+    auto *state = static_cast<TlsClientState *>(argP);
 
-    state->pcb = altcp_tls_new(tls_config, IPADDR_TYPE_ANY);
-    if (!state->pcb) {
+    state->pcbM = altcp_tls_new(tlsConfigS, IPADDR_TYPE_ANY);
+    if (!state->pcbM)
+    {
         printf("failed to create pcb\n");
         return false;
     }
 
-    altcp_arg(state->pcb, state);
-    altcp_poll(state->pcb, tls_client_poll, state->timeout * 2);
-    altcp_recv(state->pcb, tls_client_recv);
-    altcp_err(state->pcb, tls_client_err);
+    altcp_arg(state->pcbM, state);
+    altcp_poll(state->pcbM, tlsClientPoll, state->timeoutM * 2);
+    altcp_recv(state->pcbM, tlsClientRecv);
+    altcp_err(state->pcbM, tlsClientErr);
 
     /* Set SNI */
-    mbedtls_ssl_set_hostname(altcp_tls_context(state->pcb), hostname);
+    mbedtls_ssl_set_hostname(
+        static_cast<mbedtls_ssl_context *>(altcp_tls_context(state->pcbM)),
+        hostnameP);
 
-    printf("resolving %s\n", hostname);
+    printf("resolving %s\n", hostnameP);
 
     // cyw43_arch_lwip_begin/end should be used around calls into lwIP to ensure correct locking.
     // You can omit them if you are in a callback from lwIP. Note that when using pico_cyw_arch_poll
@@ -186,16 +203,16 @@ static bool tls_client_open(const char *hostname, void *arg) {
     // case you switch the cyw43_arch type later.
     cyw43_arch_lwip_begin();
 
-    err = dns_gethostbyname(hostname, &server_ip, tls_client_dns_found, state);
+    err = dns_gethostbyname(hostnameP, &server_ip, tlsClientDnsFound, state);
     if (err == ERR_OK)
     {
         /* host is in DNS cache */
-        tls_client_connect_to_server_ip(&server_ip, state);
+        tlsClientConnectToServerIp(&server_ip, state);
     }
     else if (err != ERR_INPROGRESS)
     {
         printf("error initiating DNS resolving, err=%d\n", err);
-        tls_client_close(state->pcb);
+        tlsClientClose(state->pcbM);
     }
 
     cyw43_arch_lwip_end();
@@ -204,42 +221,50 @@ static bool tls_client_open(const char *hostname, void *arg) {
 }
 
 // Perform initialisation
-static TLS_CLIENT_T* tls_client_init(void) {
-    TLS_CLIENT_T *state = calloc(1, sizeof(TLS_CLIENT_T));
-    if (!state) {
+TlsClientState *tlsClientInit(void)
+{
+    auto *state = static_cast<TlsClientState *>(calloc(1, sizeof(TlsClientState)));
+    if (!state)
+    {
         printf("failed to allocate state\n");
-        return NULL;
+        return nullptr;
     }
-
     return state;
 }
-static void tlsdebug(void *ctx, int level, const char *file, int line, const char *message){
-    fputs(message, stdout);
+
+void tlsDebug(void *ctxP, int levelP, const char *fileP, int lineP, const char *messageP)
+{
+    fputs(messageP, stdout);
 }
 
-bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *server, const char *request, int timeout) {
+} // anonymous namespace
 
+extern "C" {
+
+bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *server, const char *request, int timeout)
+{
     //mbedtls_debug_set_threshold(4); // requires #define MBEDTLS_DEBUG_C in mbedtls_xonfig.h
 
     /* No CA certificate checking */
-    tls_config = altcp_tls_create_config_client(cert, cert_len);
-    assert(tls_config);
+    tlsConfigS = altcp_tls_create_config_client(cert, cert_len);
+    assert(tlsConfigS);
 
     //mbedtls_ssl_conf_authmode(&tls_config->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-    mbedtls_ssl_conf_authmode((mbedtls_ssl_config *)tls_config, MBEDTLS_SSL_VERIFY_OPTIONAL);
-    //mbedtls_ssl_conf_authmode((mbedtls_ssl_config *)tls_config, MBEDTLS_SSL_VERIFY_REQUIRED);
-    //mbedtls_ssl_conf_dbg((mbedtls_ssl_config *)tls_config, tlsdebug, NULL);
+    mbedtls_ssl_conf_authmode(reinterpret_cast<mbedtls_ssl_config *>(tlsConfigS), MBEDTLS_SSL_VERIFY_OPTIONAL);
 
-    TLS_CLIENT_T *state = tls_client_init();
-    if (!state) {
+    auto *state = tlsClientInit();
+    if (!state)
+    {
         return false;
     }
-    state->http_request = request;
-    state->timeout = timeout;
-    if (!tls_client_open(server, state)) {
+    state->httpRequestM = request;
+    state->timeoutM = timeout;
+    if (!tlsClientOpen(server, state))
+    {
         return false;
     }
-    while(!state->complete) {
+    while (!state->completeM)
+    {
         // the following #ifdef is only here so this same example can be used in multiple modes;
         // you do not need it in your code
 #if PICO_CYW43_ARCH_POLL
@@ -257,21 +282,23 @@ bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *serve
         vTaskDelay(1000);
 #endif
     }
-    int err = state->error;
+    int err = state->errorM;
     free(state);
-    altcp_tls_free_config(tls_config);
+    altcp_tls_free_config(tlsConfigS);
     return err == 0;
 }
+
+} // extern "C"
 
 // ============================================================================
 // Global TLS variables for ThingSpeak / HTTPS requests
 // ============================================================================
 
 // Response buffer (used by run_tls_client_test and cloud_handler)
-char tls_client_response[2048*2];
+char tlsClientResponseG[2048 * 2];
 
 // Root CA certificate for api.thingspeak.com (Amazon Root CA 1)
-const char root_ca[] =
+extern char const rootCaG[] =
 "-----BEGIN CERTIFICATE-----\n"
 "MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF\n"
 "ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6\n"

@@ -17,105 +17,220 @@
 #include "setCredentials.h"
 #include "cloud_handler.h"
 #include "ssd1306os.h"
+#include "state_machine.h"
+#include "system_state.h"
 
-extern "C" {
-uint32_t read_runtime_ctr(void) {
-  return time_us_32();
+// ============================================================================
+// Hardware constants (compile-time, never changed at runtime)
+// ============================================================================
+namespace
+{
+    constexpr uint    I2C0_SDA_PIN{16};
+    constexpr uint    I2C0_SCL_PIN{17};
+    constexpr uint    I2C1_SDA_PIN{14};
+    constexpr uint    I2C1_SCL_PIN{15};
+    constexpr uint    I2C_SPEED{400'000};
+    constexpr uint8_t EEPROM_I2C_ADDR{0x50};
+    constexpr uint8_t EEPROM_ADDR_WIDTH{2};
+    constexpr TickType_t STATE_MACHINE_TICK_MS{100};
+    constexpr uint       SUPERVISOR_STACK_SIZE{2048};
+    constexpr UBaseType_t SUPERVISOR_PRIORITY{2};
 }
+
+// ============================================================================
+// Globals (pre-allocated, never freed)
+// ============================================================================
+extern "C"
+{
+    uint32_t read_runtime_ctr(void)
+    {
+        return time_us_32();
+    }
 }
 
+namespace
+{
+    // All system objects — statically allocated via shared_ptr,
+    // created once in init, never destroyed
+    std::shared_ptr<PicoI2C>       pI2cBusS;
+    std::shared_ptr<ssd1306os>     pDisplayS;
+    std::shared_ptr<Eeprom>        pEepromS;
+    std::shared_ptr<Debug>         pDebugS;
+    std::shared_ptr<DebugTask>     pDebugTaskS;
+    std::shared_ptr<RotaryEncoder> pEncoderS;
+    std::shared_ptr<InputManager>  pInputManagerS;
+    std::shared_ptr<SetCredentials> pCredentialsS;
+    std::shared_ptr<SensorHandler> pSensorHandlerS;
+    std::shared_ptr<CloudClass>    pCloudHandlerS;
 
-[[noreturn]] int main() {
-  stdio_init_all();
+    // Display manager (static to avoid shared_ptr cycle)
+    DisplayManager    *pDisplayManagerS{nullptr};
 
-  i2c_init(i2c1, 400'000);
-  gpio_set_function(14, GPIO_FUNC_I2C);
-  gpio_set_function(15, GPIO_FUNC_I2C);
-  gpio_pull_up(14);
-  gpio_pull_up(15);
+    // System context and state machine
+    SystemContext      systemContextS{};
+    SystemStateMachine *pStateMachineS{nullptr};
+}
 
-  auto i2cbus = std::make_shared<PicoI2C>(1, 400'000);
-  auto oLed = std::make_shared<ssd1306os>(i2cbus);
+// ============================================================================
+// State machine supervisor task (single control loop)
+// ============================================================================
+[[noreturn]] void supervisorTask(void *pvParametersP)
+{
+    (void)pvParametersP;
+    SystemStateMachine *pSm = pStateMachineS;
 
+    printf("[SUPERVISOR] State machine started\n");
 
-  i2c_init(i2c0, 400'000);
-  gpio_set_function(16, GPIO_FUNC_I2C);
-  gpio_set_function(17, GPIO_FUNC_I2C);
-  gpio_pull_up(16);
-  gpio_pull_up(17);
+    while (true)
+    {
+        // Execute one state machine cycle
+        SystemState currentState = pSm->executeCycle();
 
-  const auto eeprom = std::make_shared<Eeprom>(i2c0, 0x50, 2);
+        // Render display (non-blocking — just writes to OLED buffer)
+        if (pDisplayManagerS != nullptr)
+        {
+            bool const inMainMenu = pInputManagerS != nullptr
+                && pInputManagerS->isMainMenu();
 
+            if (inMainMenu)
+            {
+                pDisplayManagerS->drawMainMenu();
+            }
+            else
+            {
+                pDisplayManagerS->handleWifiMenuButtons();
+                pDisplayManagerS->drawWifiMenu();
+            }
+        }
 
-  SemaphoreHandle_t eepromMutex = xSemaphoreCreateMutex();
-  SemaphoreHandle_t sensorMutex = xSemaphoreCreateMutex();
+        // If we've reached safe stop, halt here
+        if (currentState == SystemState::SAFE_STOP)
+        {
+            printf("[SUPERVISOR] SAFE_STOP — system halted\n");
+            vTaskSuspend(nullptr);
+        }
 
+        // Fixed-rate tick — yields CPU to idle task
+        vTaskDelay(pdMS_TO_TICKS(STATE_MACHINE_TICK_MS));
+    }
+}
 
-  auto debug = std::make_shared<Debug>();
-  auto debugTask = std::make_shared<DebugTask>(debug);
+// ============================================================================
+// Main entry — init hardware, create objects, start scheduler
+// ============================================================================
+[[noreturn]] int main()
+{
+    stdio_init_all();
 
-  auto encoder = std::make_shared<RotaryEncoder>();
+    // ---- Phase 1: Hardware init ----
+    i2c_init(i2c1, I2C_SPEED);
+    gpio_set_function(I2C1_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(I2C1_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C1_SDA_PIN);
+    gpio_pull_up(I2C1_SCL_PIN);
 
-  const auto inputManager = std::make_shared<InputManager>();
+    auto pI2cBus = std::make_shared<PicoI2C>(1, I2C_SPEED);
+    auto pDisplay = std::make_shared<ssd1306os>(pI2cBus);
 
-  const auto credentials = std::make_shared<SetCredentials>(
-    *eeprom, eepromMutex);
+    i2c_init(i2c0, I2C_SPEED);
+    gpio_set_function(I2C0_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(I2C0_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C0_SDA_PIN);
+    gpio_pull_up(I2C0_SCL_PIN);
 
-  auto sensorHandler = std::make_shared<SensorHandler>(
-    sensorMutex, encoder,
-    eepromMutex, *eeprom, inputManager);
+    auto pEeprom = std::make_shared<Eeprom>(i2c0, EEPROM_I2C_ADDR, EEPROM_ADDR_WIDTH);
 
-  const auto cloudHandler = std::make_shared<CloudClass>(
-    sensorHandler, eepromMutex, *eeprom);
+    // ---- Phase 2: Mutex init ----
+    SemaphoreHandle_t eepromMutex = xSemaphoreCreateMutex();
+    SemaphoreHandle_t sensorMutex = xSemaphoreCreateMutex();
 
-  static DisplayManager displayManager(debug, oLed, encoder);
+    // ---- Phase 3: Object construction (no allocation after this) ----
+    auto pDebug = std::make_shared<Debug>();
+    auto pDebugTask = std::make_shared<DebugTask>(pDebug);
 
-  DisplayParams displayParams{
-    .sensorHandler = sensorHandler.get(),
-    .credentials = credentials.get(),
-    .inputManager = inputManager.get(),
-    .oLed = oLed.get(),
-    .encoder = encoder.get()
-  };
+    auto pEncoder = std::make_shared<RotaryEncoder>();
+    auto const pInputManager = std::make_shared<InputManager>();
 
-  displayManager.setParams(&displayParams);
+    auto const pCredentials = std::make_shared<SetCredentials>(
+        *pEeprom, eepromMutex);
 
+    auto pSensorHandler = std::make_shared<SensorHandler>(
+        sensorMutex, pEncoder,
+        eepromMutex, *pEeprom, pInputManager);
 
-  xTaskCreate(RotaryEncoder::taskEntry, "EncoderTask", 1024,
-              encoder.get(), 3, nullptr);
+    auto const pCloudHandler = std::make_shared<CloudClass>(
+        pSensorHandler, eepromMutex, *pEeprom);
 
-  xTaskCreate(SensorHandler::controlTask, "SensorLogic", 2048,
-              sensorHandler.get(), 2, nullptr);
+    static DisplayManager displayManager(pDebug, pDisplay, pEncoder);
 
-  xTaskCreate(DisplayManager::taskEntry, "DisplayTask", 2048,
-              &displayManager, 1, nullptr);
+    DisplayParams displayParams{
+        .pSensorHandlerM = pSensorHandler.get(),
+        .pCredentialsM   = pCredentials.get(),
+        .pInputManagerM  = pInputManager.get(),
+        .pOLedM          = pDisplay.get(),
+        .pEncoderM       = pEncoder.get()
+    };
 
-  xTaskCreate(InputManager::taskEntry, "InputHandler", 1024,
-              inputManager.get(), 3, nullptr);
+    displayManager.setParams(&displayParams);
 
-  // xTaskCreate(CloudClass::taskEntry, "CloudHandler", 1024,
-  //             cloudHandler.get(), 3, nullptr);
+    // ---- Phase 4: Populate globals for supervisor task ----
+    pI2cBusS       = pI2cBus;
+    pDisplayS      = pDisplay;
+    pEepromS       = pEeprom;
+    pDebugS        = pDebug;
+    pDebugTaskS    = pDebugTask;
+    pEncoderS      = pEncoder;
+    pInputManagerS = pInputManager;
+    pCredentialsS  = pCredentials;
+    pSensorHandlerS = pSensorHandler;
+    pCloudHandlerS  = pCloudHandler;
+    pDisplayManagerS = &displayManager;
 
-  xTaskCreate(
-    CloudClass::dataSendTaskEntry,
-    "DataSendTask",
-    2048,  // Stack size
-    cloudHandler.get(),
-    2,     // Priority (higher than TalkBack to ensure data sends)
-    nullptr
-  );
+    // ---- Phase 5: Populate system context ----
+    systemContextS.pI2cBusM         = pI2cBus.get();
+    systemContextS.pDisplayM        = pDisplay.get();
+    systemContextS.pEepromM         = pEeprom.get();
+    systemContextS.pDebugM          = pDebug.get();
+    systemContextS.pEncoderM        = pEncoder.get();
+    systemContextS.pInputManagerM   = pInputManager.get();
+    systemContextS.pSensorHandlerM  = pSensorHandler.get();
+    systemContextS.pCloudHandlerM   = pCloudHandler.get();
+    systemContextS.errorCountM      = 0;
+    systemContextS.cycleCountM      = 0;
+    systemContextS.lastErrorTickM   = 0;
+    systemContextS.requestedStateM  = SystemState::STARTUP;
+    systemContextS.lastGoodCo2M     = 0.0f;
+    systemContextS.lastGoodTempM    = 0.0f;
+    systemContextS.lastGoodHumidityM = 0.0f;
+    systemContextS.lastGoodFanSpeedM = 0.0f;
+    systemContextS.lastGoodSetpointM = 400;
 
-  // Create TalkBack polling task (runs every 5 seconds)
-  xTaskCreate(
-    CloudClass::talkbackPollTaskEntry,
-    "TalkBackTask",
-    2048,  // Stack size
-    cloudHandler.get(),
-    1,     // Priority (lower than data send)
-    nullptr
-  );
-  vTaskStartScheduler();
+    // Create state machine (uses stateTableM from system_state.cpp)
+    static SystemStateMachine stateMachine(
+        stateTableM,
+        &systemContextS,
+        STATE_MACHINE_TICK_MS);
 
-  while (true) {
-  }
+    pStateMachineS = &stateMachine;
+
+    // ---- Phase 6: Create FreeRTOS tasks ----
+    // Encoder: fast polling required (5ms)
+    xTaskCreate(RotaryEncoder::taskEntry, "EncoderTask", 1024,
+                pEncoder.get(), 3, nullptr);
+
+    // Input buttons: moderate polling
+    xTaskCreate(InputManager::taskEntry, "InputHandler", 1024,
+                pInputManager.get(), 3, nullptr);
+
+    // Supervisor: single state-machine-driven control loop
+    xTaskCreate(supervisorTask, "Supervisor", SUPERVISOR_STACK_SIZE,
+                nullptr, SUPERVISOR_PRIORITY, nullptr);
+
+    // ---- Phase 7: Start FreeRTOS scheduler ----
+    vTaskStartScheduler();
+
+    // Should never reach here
+    while (true)
+    {
+    }
 }

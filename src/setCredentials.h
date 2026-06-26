@@ -5,80 +5,87 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
-enum class CredentialField {
-  WIFI_NAME,
-  WIFI_PASSWD
+enum class CredentialField
+{
+    WIFI_NAME,
+    WIFI_PASSWD
 };
 
-enum class CharsetMode {
-  LOWERCASE,
-  UPPERCASE,
-  NUMBERS
+enum class CharsetMode
+{
+    LOWERCASE,
+    UPPERCASE,
+    NUMBERS
 };
 
-class CredentialValidator {
+class CredentialValidator
+{
 public:
-  static bool isValidString(const uint8_t *data, size_t len,
-                            size_t fieldSize);
+    static bool isValidString(uint8_t const *pDataP, size_t lenP,
+                              size_t fieldSizeP);
 };
 
-class SetCredentials {
+class SetCredentials
+{
 public:
-  explicit SetCredentials(Eeprom &eeprom,
-                          SemaphoreHandle_t eepromMutex);
+    explicit SetCredentials(Eeprom &rEepromP,
+                            SemaphoreHandle_t eepromMutexP);
 
-  void nextField();
+    void nextField();
 
-  [[nodiscard]] const char *getCurrentFieldName() const;
+    [[nodiscard]] char const *getCurrentFieldName() const;
 
-  [[nodiscard]] CredentialField getCurrentField() const {
-    return currentField;
-  }
+    [[nodiscard]] CredentialField getCurrentField() const
+    {
+        return currentFieldM;
+    }
 
-  void nextCharset();
+    void nextCharset();
 
-  [[nodiscard]] CharsetMode getCharsetMode() const;
+    [[nodiscard]] CharsetMode getCharsetMode() const;
 
-  [[nodiscard]] char getCurrentChar() const;
+    [[nodiscard]] char getCurrentChar() const;
 
-  void rotateChar(int direction);
+    void rotateChar(int directionP);
 
-  void confirmChar();
+    void confirmChar();
 
-  void clearCurrentField();
+    void clearCurrentField();
 
-  const char *getCurrentBuffer();
+    char const *getCurrentBuffer();
 
-  void saveAllToEEPROM() const;
+    void saveAllToEEPROM() const;
 
-  [[nodiscard]] const char *getWifiSSID() const {
-    return buffers[0].c_str();
-  }
+    [[nodiscard]] char const *getWifiSSID() const
+    {
+        return buffersM[0].c_str();
+    }
 
-  [[nodiscard]] const char *getWifiPassword() const {
-    return buffers[1].c_str();
-  }
+    [[nodiscard]] char const *getWifiPassword() const
+    {
+        return buffersM[1].c_str();
+    }
 
 private:
-  static constexpr uint16_t EEPROM_WIFI_NAME_ADDR = 0x0500;
-  static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR = 0x0600;
-  static constexpr uint16_t FIELD_SIZE = 32;
-  static constexpr uint MAX_CREDENTIAL_LENGTH = 15;
-  static constexpr uint EEPROM_SLEEP_MS = 20;
+    static constexpr uint16_t EEPROM_WIFI_NAME_ADDR{0x0500};
+    static constexpr uint16_t EEPROM_WIFI_PASSWD_ADDR{0x0600};
+    static constexpr uint16_t FIELD_SIZE{32};
+    static constexpr uint MAX_CREDENTIAL_LENGTH{15};
+    static constexpr uint EEPROM_SLEEP_MS{20};
 
-  Eeprom &eeprom;
-  SemaphoreHandle_t eepromMutex;
-  CredentialField currentField;
-  CharsetMode charsetMode;
-  size_t currentCharIndex;
-  std::string buffers[2];
-  std::string charsets[3];
+    Eeprom &rEepromM;
+    SemaphoreHandle_t eepromMutexM;
+    CredentialField currentFieldM;
+    CharsetMode charsetModeM;
+    size_t currentCharIndexM;
+    std::string buffersM[2];
+    std::string charsetsM[3];
 
-  void loadFromEEPROM();
+    void loadFromEEPROM();
 
-  void saveFieldToEEPROM(CredentialField field) const;
+    void saveFieldToEEPROM(CredentialField fieldP) const;
 
-  std::string &currentBuffer();
+    std::string &currentBuffer();
 
-  [[nodiscard]] const std::string &currentBuffer() const;
+    [[nodiscard]] std::string const &currentBuffer() const;
 };

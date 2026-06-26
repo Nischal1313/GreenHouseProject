@@ -1,57 +1,52 @@
-#ifndef GPIO_PIN_H
-#define GPIO_PIN_H
+#pragma once
 
 #include "pico/stdlib.h"
 
-// GPIO type: input or output
-enum class GPIOMode {
+enum class GPIOMode
+{
     INPUT,
     OUTPUT
 };
 
-// Pull configuration
-enum class GPIOPull {
+enum class GPIOPull
+{
     NONE,
     PULLUP,
     PULLDOWN
 };
 
-class GPIOPin {
+class GPIOPin
+{
 public:
-    // Default constructor (button input with pull-up, debounce = 50ms)
-    explicit GPIOPin(uint pin,
-            GPIOMode mode = GPIOMode::INPUT,
-            GPIOPull pull = GPIOPull::PULLUP,
-            bool invert = false,
-            uint32_t debounce_ms = 50);
+    explicit GPIOPin(
+        uint pinP,
+        GPIOMode modeP = GPIOMode::INPUT,
+        GPIOPull pullP = GPIOPull::PULLUP,
+        bool invertP = false,
+        uint32_t debounceMsP = 50);
 
-    // --- Core functions ---
     [[nodiscard]] bool read() const;
-    void write(bool value) const;
+    void write(bool valueP) const;
     [[nodiscard]] int getPin() const;
 
-    // --- Button logic ---
-    void update();                // Call periodically (~ every 1–5 ms)
-    bool pressed();               // true once per press
-    bool held();                  // true once per hold
-    void setHoldTime(uint32_t ms);
-    void setDebounceTime(uint32_t ms);
+    void update();
+    bool pressed();
+    bool held();
+    void setHoldTime(uint32_t msP);
+    void setDebounceTime(uint32_t msP);
 
 private:
-    int pin_number;
-    GPIOMode mode;
-    GPIOPull pull;
-    bool is_inverted;
+    int pinNumberM;
+    GPIOMode modeM;
+    GPIOPull pullM;
+    bool isInvertedM;
 
-    // --- Button state ---
-    bool lastReading;
-    bool stableState;
-    bool pressEvent;
-    bool holdEvent;
-    absolute_time_t lastChangeTime;
-    absolute_time_t pressStartTime;
-    uint32_t debounce_ms;
-    uint32_t hold_ms;
+    bool lastReadingM;
+    bool stableStateM;
+    bool pressEventM;
+    bool holdEventM;
+    absolute_time_t lastChangeTimeM;
+    absolute_time_t pressStartTimeM;
+    uint32_t debounceMsM;
+    uint32_t holdMsM;
 };
-
-#endif

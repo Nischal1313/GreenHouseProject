@@ -5,8 +5,9 @@
  */
 
 #include <mbedtls/debug.h>
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
+
+#include <pico/stdlib.h>
+#include <pico/cyw43_arch.h>
 
 #if 1
 //#define TLS_CLIENT_SERVER        "18.198.188.151"
@@ -40,40 +41,37 @@ QaFXAdvGJkhKEwJVn3qETVlTdtSKpc/1KdXq/01HuX7cPfXVMGJVXuJAk6Yxgx8z\n\
 Ew==\n\
 -----END CERTIFICATE-----\n"
 
-extern bool run_tls_client_test(const uint8_t *cert, size_t cert_len, const char *server, const char *request, int timeout);
+extern bool run_tls_client_test(uint8_t const *pCertP, size_t certLenP, char const *pServerP, char const *pRequestP, int timeoutP);
 
-//#define WIFI_SSID "SmartIotMQTT"
-//#define WIFI_PASSWORD "SmartIot"
-
-void tls_test(void) {
+void tlsTest(void)
+{
     //stdio_init_all();
-#if 0
-    struct timeval now;
-    now.tv_sec = 1725920831;
-    now.tv_usec = 0;
-    settimeofday(&now, NULL);
-#endif
     char ssid[] = WIFI_SSID;
     char pwd[] = WIFI_PASSWORD;
-    printf("SSID: %s\nPWD: %s\n", ssid, pwd);//WIFI_SSID, WIFI_PASSWORD);
-    if (cyw43_arch_init()) {
+    printf("SSID: %s\nPWD: %s\n", ssid, pwd);
+    if (cyw43_arch_init())
+    {
         printf("failed to initialise\n");
         return;
     }
     cyw43_arch_enable_sta_mode();
 
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000))
+    {
         printf("failed to connect\n");
         return;
     }
-    const uint8_t cert_joe[] = TLS_JOES_SERVER;
-    const uint8_t dummy_cert[]={0};
+    uint8_t const cert_joe[] = TLS_JOES_SERVER;
+    uint8_t const dummy_cert[] = {0};
 
     //bool pass = run_tls_client_test(cert_joe, sizeof(cert_joe), TLS_CLIENT_SERVER, TLS_CLIENT_HTTP_REQUEST, TLS_CLIENT_TIMEOUT_SECS);
-    bool pass = run_tls_client_test(NULL, 0, TLS_CLIENT_SERVER, TLS_CLIENT_HTTP_REQUEST, TLS_CLIENT_TIMEOUT_SECS);
-    if (pass) {
+    bool pass = run_tls_client_test(nullptr, 0, TLS_CLIENT_SERVER, TLS_CLIENT_HTTP_REQUEST, TLS_CLIENT_TIMEOUT_SECS);
+    if (pass)
+    {
         printf("Test passed\n");
-    } else {
+    }
+    else
+    {
         printf("Test failed\n");
     }
     /* sleep a bit to let usb stdio write out any buffer to host */
@@ -83,4 +81,3 @@ void tls_test(void) {
     printf("All done\n");
     return;
 }
-

@@ -11,53 +11,56 @@
 #include "sensor_handler.h"
 #include "setCredentials.h"
 #include "inputManager.h"
-#include "debug.h"
-#include "rotary_encoder.h"
 
-enum class MenuState {
-  MAIN,
-  WIFI
+enum class MenuState
+{
+    MAIN,
+    WIFI
 };
 
-struct DisplayParams {
-  SensorHandler *sensorHandler;
-  SetCredentials *credentials;
-  InputManager *inputManager;
-  ssd1306os *oLed;
-  RotaryEncoder *encoder;
+struct DisplayParams
+{
+    SensorHandler *pSensorHandlerM;
+    SetCredentials *pCredentialsM;
+    InputManager *pInputManagerM;
+    ssd1306os *pOLedM;
+    RotaryEncoder *pEncoderM;
 };
 
-class DisplayManager {
+class DisplayManager
+{
 public:
-  DisplayManager(std::shared_ptr<Debug> debug,
-                 std::shared_ptr<ssd1306os> oled,
-                 const std::shared_ptr<RotaryEncoder> &encoderPtr);
+    DisplayManager(std::shared_ptr<Debug> pDebugP,
+                   std::shared_ptr<ssd1306os> pOledP,
+                   std::shared_ptr<RotaryEncoder> const &pEncoderPtrP);
 
-  void setParams(DisplayParams *displayParams);
+    void setParams(DisplayParams *pDisplayParamsP);
 
-  static void taskEntry(void *pvParameters);
+    // State-machine-driven display rendering
+    void drawMainMenu() const;
 
-  [[noreturn]] void displayTask();
+    void drawWifiMenu();
+
+    void handleWifiMenuButtons();
+
+    // Legacy task entry (not used by state machine supervisor)
+    static void taskEntry(void *pvParametersP);
+
+    [[noreturn]] void displayTask();
 
 private:
-  void drawMainMenu() const;
 
-  void drawWifiMenu();
+    void changeMenu();
 
-  void handleWifiMenuButtons();
+    [[nodiscard]] MenuState getCurrentMenuState() const;
 
-  void changeMenu();
+    std::shared_ptr<ssd1306os> pOLedM;
+    std::shared_ptr<Debug> pDebugM;
+    std::shared_ptr<RotaryEncoder> pEncoderM;
 
-  [[nodiscard]] MenuState getCurrentMenuState() const;
+    DisplayParams *pParamsM;
+    MenuState menuStateM;
 
-  std::shared_ptr<ssd1306os> oLed;
-  std::shared_ptr<Debug> debug;
-  std::shared_ptr<RotaryEncoder> encoder;
-
-  DisplayParams *params;
-  MenuState menuState;
-
-  bool prevSSIDSelected;
-  bool prevCharsetChanged;
+    bool prevSsidSelectedM;
+    bool prevCharsetChangedM;
 };
-

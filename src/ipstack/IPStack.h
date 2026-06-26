@@ -2,45 +2,45 @@
 // Created by Keijo Länsikunnas on 12.2.2024.
 //
 
-#ifndef UART_IRQ_IPSTACK_H
-#define UART_IRQ_IPSTACK_H
+#pragma once
 
 #include <cstdint>
 #include <memory>
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
+#include <array>
 
-#include "lwip/pbuf.h"
-#include "lwip/tcp.h"
+#include <pico/stdlib.h>
+#include <pico/cyw43_arch.h>
+
+#include <lwip/pbuf.h>
+#include <lwip/tcp.h>
 
 
-class IPStack {
+class IPStack
+{
 public:
-    IPStack(const char *ssid, const char *pw);
-    int connect(const char *hostname, int port);
-    int connect(uint32_t hostname, int port);
-    int read(unsigned char *buffer, int len, int timeout);
-    int write(unsigned char *buffer, int len, int timeout);
+    IPStack(const char *ssidP, const char *pwP);
+    int connect(const char *hostnameP, int portP);
+    int connect(uint32_t hostnameP, int portP);
+    int read(unsigned char *bufferP, int lenP, int timeoutP);
+    int write(unsigned char *bufferP, int lenP, int timeoutP);
     int disconnect();
     // lwip callback functions
-    static err_t tcp_client_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
-    static err_t tcp_client_poll(void *arg, struct tcp_pcb *tpcb) ;
-    static void tcp_client_err(void *arg, err_t err);
-    static err_t tcp_client_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
-    static err_t tcp_client_connected(void *arg, struct tcp_pcb *tpcb, err_t err);
+    static err_t tcpClientSent(void *argP, struct tcp_pcb *tpcbP, u16_t lenP);
+    static err_t tcpClientPoll(void *argP, struct tcp_pcb *tpcbP);
+    static void tcpClientErr(void *argP, err_t errP);
+    static err_t tcpClientRecv(void *argP, struct tcp_pcb *tpcbP, struct pbuf *pP, err_t errP);
+    static err_t tcpClientConnected(void *argP, struct tcp_pcb *tpcbP, err_t errP);
 
-    static const int BUF_SIZE{2048};
-    static const int POLL_TIME_S{5};
+    static int const BUF_SIZE{2048};
+    static int const POLL_TIME_S{5};
+
 private:
-    struct tcp_pcb *tcp_pcb;
-    ip_addr_t remote_addr;
-    uint8_t buffer[BUF_SIZE];
-    uint16_t count;
-    uint32_t dropped;
-    uint16_t wr; // write index
-    uint16_t rd; // read index
-    bool connected;
+    struct tcp_pcb *pTcpPcbM;
+    ip_addr_t remoteAddrM;
+    std::array<uint8_t, BUF_SIZE> bufferM;
+    uint16_t countM;
+    uint32_t droppedM;
+    uint16_t wrM; // write index
+    uint16_t rdM; // read index
+    bool connectedM;
 };
-
-
-#endif //UART_IRQ_IPSTACK_H

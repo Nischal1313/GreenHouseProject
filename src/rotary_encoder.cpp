@@ -1,146 +1,153 @@
 #include "rotary_encoder.h"
 
-
 /*
  * Gray-code rotary encoder logic with button press/hold and debouncing.
  *
  * A/B signals form this Gray code pattern:
- *   CW:  00 → 01 → 11 → 10 → 00
- *   CCW: 00 → 10 → 11 → 01 → 00
+ *   CW:  00 -> 01 -> 11 -> 10 -> 00
+ *   CCW: 00 -> 10 -> 11 -> 01 -> 00
  *
  * We use both last and current A/B states (2 bits each) to build a
  * 4-bit "transition code". Valid CW and CCW transitions are matched
  * against known patterns. This method filters bounce and invalid states.
  */
 
-RotaryEncoder::RotaryEncoder(const uint pinA, const uint pinB,
-                             const uint pinButton,
-                             const uint32_t debounceTime,
-                             const uint32_t holdTime)
-  : pinA(pinA), pinB(pinB), pinButton(pinButton),
+RotaryEncoder::RotaryEncoder(uint pinAP, uint pinBP,
+                             uint pinButtonP,
+                             uint32_t debounceTimeP,
+                             uint32_t holdTimeP)
+  : pinAM{pinAP}, pinBM{pinBP}, pinButtonM{pinButtonP},
+    lastEncodedM{0}, cwEventM{false}, ccwEventM{false},
+    lastButtonReadingM{false}, buttonStateM{false},
+    pressedEventM{false}, heldEventM{false},
+    debounceTimeM{debounceTimeP}, holdTimeM{holdTimeP}
+{
+    gpio_init(pinAP);
+    gpio_set_dir(pinAP, GPIO_IN);
+    gpio_pull_up(pinAP);
+    gpio_init(pinBP);
+    gpio_set_dir(pinBP, GPIO_IN);
+    gpio_pull_up(pinBP);
+    gpio_init(pinButtonP);
+    gpio_set_dir(pinButtonP, GPIO_IN);
+    gpio_pull_up(pinButtonP);
 
-    lastEncoded(0), cwEvent(false), ccwEvent(false),
-    lastButtonReading(false), buttonState(false),
-    pressedEvent(false), heldEvent(false),
-    debounceTime(debounceTime), holdTime(holdTime) {
+    int const MSB = !gpio_get(pinAP);
+    int const LSB = !gpio_get(pinBP);
+    lastEncodedM = MSB << 1 | LSB;
 
-  gpio_init(pinA);
-  gpio_set_dir(pinA, GPIO_IN);
-  gpio_pull_up(pinA);
-  gpio_init(pinB);
-  gpio_set_dir(pinB, GPIO_IN);
-  gpio_pull_up(pinB);
-  gpio_init(pinButton);
-  gpio_set_dir(pinButton, GPIO_IN);
-  gpio_pull_up(pinButton);
-
-  const int MSB = !gpio_get(pinA);
-  const int LSB = !gpio_get(pinB);
-  lastEncoded = MSB << 1 | LSB;
-
-  lastDebounceTime = get_absolute_time();
-  pressStartTime = get_absolute_time();
+    lastDebounceTimeM = get_absolute_time();
+    pressStartTimeM = get_absolute_time();
 }
 
+void RotaryEncoder::update()
+{
+    int const MSB = !gpio_get(pinAM);
+    int const LSB = !gpio_get(pinBM);
+    int const encoded = MSB << 1 | LSB;
 
-void RotaryEncoder::update() {
-  const int MSB = !gpio_get(pinA);
-  const int LSB = !gpio_get(pinB);
-  const int encoded = MSB << 1 | LSB;
+    // These 8 transitions are valid
+    switch (lastEncodedM << 2 | encoded) {
+        // CW transitions
+        case 0b1101:
+        case 0b0100:
+        case 0b0010:
+        case 0b1011:
+            ccwEventM = false;
+            cwEventM = true;
+            break;
 
-  // These 8 transitions are valid
-  switch (lastEncoded << 2 | encoded) {
-    // CW transitions
-    case 0b1101:
-    case 0b0100:
-    case 0b0010:
-    case 0b1011:
-      ccwEvent = false;
-      cwEvent = true;
-      break;
+        // CCW transitions
+        case 0b1110:
+        case 0b0111:
+        case 0b0001:
+        case 0b1000:
+            cwEventM = false;
+            ccwEventM = true;
+            break;
 
-    // CCW transitions
-    case 0b1110:
-    case 0b0111:
-    case 0b0001:
-    case 0b1000:
-      cwEvent = false;
-      ccwEvent = true;
-      break;
-
-    default:
-      // Ignore invalid
-      break;
-  }
-  lastEncoded = encoded;
-
-  // ---- BUTTON HANDLING ----
-  const bool reading = !gpio_get(pinButton); // active low
-  const absolute_time_t now = get_absolute_time();
-
-  // Debounce: only consider stable changes after debounceTime ms
-  if (reading != lastButtonReading)
-    lastDebounceTime = now;
-
-  if (absolute_time_diff_us(lastDebounceTime, now) > debounceTime *
-      1000) {
-    if (reading != buttonState) {
-      buttonState = reading;
-      if (buttonState) {
-        // pressed
-        pressedEvent = true;
-        pressStartTime = now;
-        heldEvent = false;
-      } else {
-        heldEvent = false;
-      }
+        default:
+            // Ignore invalid
+            break;
     }
-  }
+    lastEncodedM = encoded;
 
-  if (buttonState && !heldEvent &&
-      absolute_time_diff_us(pressStartTime, now) > holdTime * 1000) {
-    heldEvent = true;
-  }
-  lastButtonReading = reading;
+    // ---- BUTTON HANDLING ----
+    bool const reading = !gpio_get(pinButtonM); // active low
+    absolute_time_t const now = get_absolute_time();
+
+    // Debounce: only consider stable changes after debounceTime ms
+    if (reading != lastButtonReadingM) {
+        lastDebounceTimeM = now;
+    }
+
+    if (absolute_time_diff_us(lastDebounceTimeM, now) > debounceTimeM *
+        1000) {
+        if (reading != buttonStateM) {
+            buttonStateM = reading;
+            if (buttonStateM) {
+                // pressed
+                pressedEventM = true;
+                pressStartTimeM = now;
+                heldEventM = false;
+            } else {
+                heldEventM = false;
+            }
+        }
+    }
+
+    if (buttonStateM && !heldEventM &&
+        absolute_time_diff_us(pressStartTimeM, now) > holdTimeM * 1000) {
+        heldEventM = true;
+    }
+    lastButtonReadingM = reading;
 }
 
-bool RotaryEncoder::rotatedCW() {
-  if (cwEvent) {
-    cwEvent = false;
-    return true;
-  }
-  return false;
+bool RotaryEncoder::rotatedCW()
+{
+    bool result{false};
+    if (cwEventM) {
+        cwEventM = false;
+        result = true;
+    }
+    return result;
 }
 
-bool RotaryEncoder::rotatedCCW() {
-  if (ccwEvent) {
-    ccwEvent = false;
-    return true;
-  }
-  return false;
+bool RotaryEncoder::rotatedCCW()
+{
+    bool result{false};
+    if (ccwEventM) {
+        ccwEventM = false;
+        result = true;
+    }
+    return result;
 }
 
-bool RotaryEncoder::buttonPressed() {
-  if (pressedEvent) {
-    pressedEvent = false;
-    return true;
-  }
-  return false;
+bool RotaryEncoder::buttonPressed()
+{
+    bool result{false};
+    if (pressedEventM) {
+        pressedEventM = false;
+        result = true;
+    }
+    return result;
 }
 
-bool RotaryEncoder::buttonHeld() {
-  if (heldEvent) {
-    heldEvent = false;
-    return true;
-  }
-  return false;
+bool RotaryEncoder::buttonHeld()
+{
+    bool result{false};
+    if (heldEventM) {
+        heldEventM = false;
+        result = true;
+    }
+    return result;
 }
 
-
-void RotaryEncoder::taskEntry(void *pvParameters) {
-  auto *encoder = static_cast<RotaryEncoder *>(pvParameters);
-  while (true) {
-    encoder->update();
-    vTaskDelay(pdMS_TO_TICKS(5));
-  }
+void RotaryEncoder::taskEntry(void *pvParametersP)
+{
+    auto *pEncoder = static_cast<RotaryEncoder *>(pvParametersP);
+    while (true) {
+        pEncoder->update();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
 }

@@ -2,8 +2,7 @@
 // Created by Keijo Länsikunnas on 30.8.2024.
 //
 
-#ifndef RP2040_FREERTOS_IRQ_PICOOSUART_H
-#define RP2040_FREERTOS_IRQ_PICOOSUART_H
+#pragma once
 
 #include <hardware/uart.h>
 #include <hardware/irq.h>
@@ -12,29 +11,39 @@
 #include "queue.h"
 #include "Fmutex.h"
 
-class PicoOsUart {
-    friend void pico_uart0_handler(void);
-    friend void pico_uart1_handler(void);
+class PicoOsUart
+{
+    friend void picoUart0Handler();
+    friend void picoUart1Handler();
+
 public:
-    PicoOsUart(int uart_nr, int tx_pin, int rx_pin, int speed, int stop = 1, int tx_size = 256, int rx_size = 256);
-    PicoOsUart(const PicoOsUart &) = delete; // prevent copying because each instance is associated with a HW peripheral
-    int read(uint8_t *buffer, int size, TickType_t timeout = pdMS_TO_TICKS(500));
-    int write(const uint8_t *buffer, int size, TickType_t timeout = pdMS_TO_TICKS(500));
-    int send(const char *str);
-    int send(const std::string &str);
+    PicoOsUart(
+        int uartNrP,
+        int txPinP,
+        int rxPinP,
+        int speedP,
+        int stopP = 1,
+        int txSizeP = 256,
+        int rxSizeP = 256);
+
+    PicoOsUart(PicoOsUart const &) = delete;
+
+    int read(uint8_t *pBufferP, int sizeP, TickType_t timeoutP = pdMS_TO_TICKS(500));
+    int write(uint8_t const *pBufferP, int sizeP, TickType_t timeoutP = pdMS_TO_TICKS(500));
+    int send(char const *strP);
+    int send(std::string const &rStrP);
     int flush();
-    int get_fifo_level();
-    int get_baud() const;
+    int getFifoLevel();
+    int getBaud() const;
+
 private:
-    void uart_irq_rx();
-    void uart_irq_tx();
-    Fmutex access;
-    QueueHandle_t tx;
-    QueueHandle_t rx;
-    uart_inst_t *uart;
-    int irqn;
-    int speed;
+    void uartIrqRx();
+    void uartIrqTx();
+
+    Fmutex accessM;
+    QueueHandle_t txM;
+    QueueHandle_t rxM;
+    uart_inst_t *uartM;
+    int irqnM;
+    int speedM;
 };
-
-
-#endif //RP2040_FREERTOS_IRQ_PICOOSUART_H

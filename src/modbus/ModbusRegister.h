@@ -2,24 +2,21 @@
 // Created by Keijo Länsikunnas on 14.2.2024.
 //
 
-#ifndef UART_IRQ_MODBUSREGISTER_H
-#define UART_IRQ_MODBUSREGISTER_H
+#pragma once
 
 #include <memory>
 #include "ModbusClient.h"
 
-class ModbusRegister {
+class ModbusRegister
+{
 public:
-    ModbusRegister(std::shared_ptr<ModbusClient> client_, int server_address, int register_address, bool holding_register = true);
+    ModbusRegister(std::shared_ptr<ModbusClient> pclientP, int serverAddressP, int registerAddressP, bool holdingRegisterP = true);
     uint16_t read();
-    void write(uint16_t value);
+    void write(uint16_t valueP);
+
 private:
-    std::shared_ptr<ModbusClient> client;
-    int server;
-    int reg_addr;
-    bool hr;
-
+    std::shared_ptr<ModbusClient> clientM;
+    int serverM;
+    int regAddrM;
+    bool hrM;
 };
-
-
-#endif //UART_IRQ_MODBUSREGISTER_H

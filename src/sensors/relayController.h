@@ -3,15 +3,16 @@
 
 constexpr uint VALVE_PIN = 27;
 
-class VALVE {
+class Valve
+{
 public:
-    VALVE();
+    Valve();
 
     void openValve();
     void closeValve();
     [[nodiscard]] bool valveStatus() const;
 
 private:
-    GPIOPin valvePin;
-    bool valveState;
+    GPIOPin valvePinM;
+    bool valveStateM;
 };

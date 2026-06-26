@@ -1,22 +1,25 @@
 #include "relayController.h"
 
-VALVE::VALVE()
-    : valvePin(VALVE_PIN, GPIOMode::OUTPUT, GPIOPull::NONE, false),
-      valveState(false)
+Valve::Valve()
+    : valvePinM(VALVE_PIN, GPIOMode::OUTPUT, GPIOPull::NONE, false),
+      valveStateM(false)
 {
-    valvePin.write(false);
+    valvePinM.write(false);
 }
 
-void VALVE::openValve() {
-    valvePin.write(true);
-    valveState = true;
+void Valve::openValve()
+{
+    valvePinM.write(true);
+    valveStateM = true;
 }
 
-void VALVE::closeValve() {
-    valvePin.write(false);
-    valveState = false;
+void Valve::closeValve()
+{
+    valvePinM.write(false);
+    valveStateM = false;
 }
 
-bool VALVE::valveStatus() const {
-    return valveState;
+bool Valve::valveStatus() const
+{
+    return valveStateM;
 }

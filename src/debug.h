@@ -3,35 +3,34 @@
 #include "queue.h"
 #include <memory>
 
-struct DebugEvent {
-  char msg[128];
-  uint32_t timestamp;
+struct DebugEvent
+{
+    char msg[128];
+    uint32_t timestamp;
 };
 
-class Debug {
+class Debug
+{
 public:
-  Debug();
+    Debug();
 
-  void print(const char *txt, ...) const;
+    void print(char const *pTxtP, ...) const;
 
-  [[nodiscard]] DebugEvent getEvent() const;
+    [[nodiscard]] DebugEvent getEvent() const;
 
 private:
-  QueueHandle_t m_queue;
+    QueueHandle_t m_queue;
 };
 
-
-class DebugTask {
+class DebugTask
+{
 public:
-  explicit DebugTask(std::shared_ptr<Debug> debug);
+    explicit DebugTask(std::shared_ptr<Debug> pDebugP);
 
-  [[noreturn]] void run() const;
+    [[noreturn]] void run() const;
 
 private:
-  std::shared_ptr<Debug> m_debug;
+    std::shared_ptr<Debug> m_debug;
 };
 
-
-void debug(const char *txt, ...);
-
-void createQueue();
+void debug(char const *pTxtP, ...);

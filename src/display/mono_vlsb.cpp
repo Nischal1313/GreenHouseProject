@@ -32,45 +32,61 @@
 #include <cstring>
 #include "mono_vlsb.h"
 
-mono_vlsb::mono_vlsb(uint16_t width_, uint16_t height_, uint16_t stride_, uint16_t buf_offset) :
-        framebuf(width_, height_),
-        size(width_ * (height_ / 8 + (height_ % 8 ? 1 : 0)) + buf_offset), stride(stride_), buffer_offset(buf_offset),
-        buffer(std::shared_ptr<uint8_t>(new uint8_t[size])) {
+mono_vlsb::mono_vlsb(uint16_t widthP, uint16_t heightP, uint16_t strideP, uint16_t bufOffsetP) :
+    framebuf(widthP, heightP),
+    sizeM(static_cast<uint32_t>(widthP) * (heightP / 8 + (heightP % 8 ? 1 : 0)) + bufOffsetP),
+    strideM(strideP),
+    bufferOffsetM(bufOffsetP),
+    bufferM(std::shared_ptr<uint8_t>(new uint8_t[sizeM]))
+{
     // zero out the buffer
-    std::memset(buffer.get(), 0, size);
-    if (stride < width_) stride = width_;
+    std::memset(bufferM.get(), 0, sizeM);
+    if (strideM < widthP)
+    {
+        strideM = widthP;
+    }
 }
 
-mono_vlsb::mono_vlsb(const uint8_t *image, uint8_t width_, uint16_t height_, uint16_t stride_, uint16_t buf_offset) :
-        framebuf(width_, height_),
-        size(width_ * (height_ / 8 + (height_ % 8 ? 1 : 0)) + buf_offset), stride(stride_), buffer_offset(buf_offset),
-        buffer(std::shared_ptr<uint8_t>(new uint8_t[size])) {
+mono_vlsb::mono_vlsb(uint8_t const *pImageP, uint8_t widthP, uint16_t heightP, uint16_t strideP, uint16_t bufOffsetP) :
+    framebuf(widthP, heightP),
+    sizeM(static_cast<uint32_t>(widthP) * (heightP / 8 + (heightP % 8 ? 1 : 0)) + bufOffsetP),
+    strideM(strideP),
+    bufferOffsetM(bufOffsetP),
+    bufferM(std::shared_ptr<uint8_t>(new uint8_t[sizeM]))
+{
     // copy image to the buffer
-    std::memcpy(buffer.get() + buf_offset, image, size - buf_offset);
-    if (stride < width) stride = width_;
+    std::memcpy(bufferM.get() + bufOffsetP, pImageP, sizeM - bufOffsetP);
+    if (strideM < widthM)
+    {
+        strideM = widthP;
+    }
 }
 
-
-void mono_vlsb::setpixel(uint16_t x, uint16_t y, uint32_t color) {
-    size_t index = (y >> 3) * stride + x + buffer_offset;
-    uint8_t offset = y & 0x07;
-    buffer.get()[index] = (buffer.get()[index] & ~(0x01 << offset)) | ((color != 0) << offset);
+void mono_vlsb::setpixel(uint16_t xP, uint16_t yP, uint32_t colorP)
+{
+    size_t index = static_cast<size_t>(yP >> 3) * strideM + xP + bufferOffsetM;
+    uint8_t offset = yP & 0x07;
+    bufferM.get()[index] = (bufferM.get()[index] & ~(0x01 << offset)) | ((colorP != 0) << offset);
 }
 
-uint32_t mono_vlsb::getpixel(uint16_t x, uint16_t y) const {
-    return (buffer.get()[(y >> 3) * stride + x + buffer_offset] >> (y & 0x07)) & 0x01;
+uint32_t mono_vlsb::getpixel(uint16_t xP, uint16_t yP) const
+{
+    return (bufferM.get()[static_cast<size_t>(yP >> 3) * strideM + xP + bufferOffsetM] >> (yP & 0x07)) & 0x01;
 }
 
-void mono_vlsb::fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color) {
-    while (h--) {
-        uint8_t *b = &buffer.get()[(y >> 3) * stride + x + buffer_offset];
+void mono_vlsb::fill_rect(uint16_t xP, uint16_t yP, uint16_t wP, uint16_t hP, uint32_t colorP)
+{
+    uint16_t y = yP;
+    uint16_t h = hP;
+    while (h--)
+    {
+        uint8_t *pB = &bufferM.get()[static_cast<size_t>(y >> 3) * strideM + xP + bufferOffsetM];
         uint8_t offset = y & 0x07;
-        for (unsigned int ww = w; ww; --ww) {
-            *b = (*b & ~(0x01 << offset)) | ((color != 0) << offset);
-            ++b;
+        for (unsigned int ww = wP; ww; --ww)
+        {
+            *pB = (*pB & ~(0x01 << offset)) | ((colorP != 0) << offset);
+            ++pB;
         }
         ++y;
     }
 }
-
-
